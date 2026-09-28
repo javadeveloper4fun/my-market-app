@@ -10,11 +10,15 @@ spring:
     password: market
 
   jpa:
-    hibernate:
-      # Hibernate создаёт схему по сущностям при старте,
-      # затем выполняется data.sql (defer-datasource-initialization).
-      ddl-auto: create
-    # data.sql выполняется ПОСЛЕ создания Hibernate таблиц.
+    properties:
+      hibernate:
+        # В Spring Boot 4 свойство spring.jpa.hibernate.ddl-auto удалено,
+        # поэтому режим генерации схемы задаётся Hibernate напрямую.
+        # create пересоздаёт схему по сущностям при каждом старте
+        # (учебный проект: накопления данных в БД не требуется).
+        hbm2ddl:
+          auto: create
+    # data.sql выполняется после того, как Hibernate создаст таблицы.
     defer-datasource-initialization: true
 
   sql:

@@ -10,12 +10,16 @@ spring:
     password: ""
 
   jpa:
-    hibernate:
-      # Контекст теста стартует на пустой схеме каждого прогона.
-      ddl-auto: create-drop
+    properties:
+      hibernate:
+        # Контекст теста стартует на пустой схеме каждого прогона
+        # (Hibernate создаёт её по сущностям, см. spring.jpa.properties).
+        hbm2ddl:
+          auto: create-drop
+    # data.sql накатывается уже после создания схемы Hibernate.
     defer-datasource-initialization: true
 
   sql:
     init:
-      # Наполнение data.sql применяется и в тестах (@DataJpaTest).
+      # Стартовое наполнение data.sql применяется и в тестах (@DataJpaTest).
       mode: always
