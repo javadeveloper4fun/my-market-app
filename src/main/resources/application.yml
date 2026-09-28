@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: my-market-app
+
+  datasource:
+    # Персистентная БД — PostgreSQL, поднимается командой
+    # docker compose up -d (см. docker-compose.yml).
+    url: jdbc:postgresql://localhost:5439/market
+    username: market
+    password: market
+
+  jpa:
+    hibernate:
+      # Hibernate создаёт схему по сущностям при старте,
+      # затем выполняется data.sql (defer-datasource-initialization).
+      ddl-auto: create
+    # data.sql выполняется ПОСЛЕ создания Hibernate таблиц.
+    defer-datasource-initialization: true
+
+  sql:
+    init:
+      # Накатывать data.sql (стартовое наполнение витрины) всегда.
+      mode: always
+
+server:
+  port: 8080

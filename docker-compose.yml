@@ -1,0 +1,36 @@
+# ===================================================================
+# Docker Compose для проекта «Витрина интернет-магазина» (Спринт 5)
+#
+# Постановка допускает два варианта хранилища: персистентную БД
+# (PostgreSQL) или БД в памяти (H2). Здесь используется PostgreSQL,
+# поэтому перед запуском приложения сначала поднимается СУБД:
+#   docker compose up -d
+# ===================================================================
+
+services:
+  market-postgres:
+    image: postgres:17.5
+    container_name: my-market-app-postgres
+    restart: unless-stopped
+    environment:
+      # Параметры создаваемой базы, пользователя и пароля задаются
+      # переменными окружения entrypoint-скрипта официального образа.
+      POSTGRES_DB: market
+      POSTGRES_USER: market
+      POSTGRES_PASSWORD: market
+    ports:
+      # Проброс порта: "порт хоста : порт контейнера" — приложение
+      # обращается к БД по localhost:5439, внутри контейнера PG на 5432.
+      - "5439:5432"
+    volumes:
+      # Именованный том сохраняет данные БД между перезапусками контейнера.
+      - market_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # Проверка готовности БД: pg_isready каждые 5 секунд, до 10 попыток.
+      test: ["CMD-SHELL", "pg_isready -U market -d market"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  market_postgres_data:
