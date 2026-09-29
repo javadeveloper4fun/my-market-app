@@ -21,5 +21,6 @@ spring:
 
   sql:
     init:
-      # Стартовое наполнение data.sql применяется и в тестах (@DataJpaTest).
-      mode: always
+      # data.sql не накатывается в тестовом профиле: @DataJpaTest и
+      # @SpringBootTest-тесты сами наполняют схему изолированными данными.
+      mode: never

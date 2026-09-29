@@ -27,12 +27,4 @@ public interface CartItemRepository extends JpaRepository<CartItem, Long> {
      * @return позиция корзины (или пустая, если товара в корзине нет)
      */
     Optional<CartItem> findByItemId(Long itemId);
-
-    /**
-     * Проверяет, есть ли товар с указанным идентификатором уже в корзине.
-     *
-     * @param itemId идентификатор товара
-     * @return {@code true}, если товар уже в корзине
-     */
-    boolean existsByItemId(Long itemId);
 }

@@ -24,8 +24,8 @@ public interface ItemRepository extends JpaRepository<Item, Long> {
     @Query("""
             select i from Item i
             where (:text is null
-                or lower(i.title) like lower(concat('%', :text, '%'))
-                or lower(i.description) like lower(concat('%', :text, '%')))
+                or lower(i.title) like lower(concat('%', :text, '%')) escape '\\'
+                or lower(i.description) like lower(concat('%', :text, '%')) escape '\\')
             """)
     Page<Item> search(@Param("text") String text, Pageable pageable);
 }

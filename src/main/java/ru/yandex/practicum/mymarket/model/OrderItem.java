@@ -32,6 +32,14 @@ public class OrderItem {
     @JoinColumn(name = "order_id", nullable = false)
     private Order order;
 
+    /**
+     * Идентификатор купленного товара (снимок на момент покупки).
+     * Хранится как обычное поле, а не FK на Item — чтобы заказ
+     * не зависел от текущего состояния каталога.
+     */
+    @Column(name = "item_id", nullable = false)
+    private Long itemId;
+
     @Column(nullable = false)
     private String title;
 
@@ -44,11 +52,13 @@ public class OrderItem {
     /**
      * Создаёт строку заказа с данными товара на момент покупки.
      *
+     * @param itemId идентификатор купленного товара
      * @param title название товара
      * @param price цена товара
      * @param count количество
      */
-    public OrderItem(String title, BigDecimal price, int count) {
+    public OrderItem(Long itemId, String title, BigDecimal price, int count) {
+        this.itemId = itemId;
         this.title = title;
         this.price = price;
         this.count = count;

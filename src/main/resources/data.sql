@@ -1,7 +1,11 @@
 -- ===================================================================
 -- Стартовое наполнение витрины четырьмя товарами (data.sql).
--- Выполняется после создания схемы Hibernate (spring.jpa.
--- defer-datasource-initialization) при запуске приложения и в тестах.
+-- Выполняется при запуске приложения (профиль по умолчанию) после
+-- создания схемы Hibernate (spring.jpa.defer-datasource-initialization
+-- и spring.sql.init.mode=always в application.yml).
+-- В тестовом профиле (application-test.yml) data.sql не накатывается
+-- (spring.sql.init.mode=never), поэтому тесты наполняют схему
+-- изолированными данными самостоятельно.
 -- ===================================================================
 
 INSERT INTO items (title, description, img_path, price) VALUES

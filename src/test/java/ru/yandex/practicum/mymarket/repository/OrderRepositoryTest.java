@@ -27,13 +27,14 @@ class OrderRepositoryTest {
     @Test
     void savesOrderWithItems() {
         Order order = new Order();
-        order.addItem(new OrderItem("Куртка", new BigDecimal("4500.00"), 2));
-        order.addItem(new OrderItem("Плед", new BigDecimal("1600.00"), 1));
+        order.addItem(new OrderItem(1L, "Куртка", new BigDecimal("4500.00"), 2));
+        order.addItem(new OrderItem(2L, "Плед", new BigDecimal("1600.00"), 1));
 
         Order saved = orderRepository.saveAndFlush(order);
 
         assertThat(saved.getId()).isNotNull();
         assertThat(saved.getItems()).hasSize(2);
+        assertThat(saved.getItems()).extracting(OrderItem::getItemId).containsExactly(1L, 2L);
     }
 
     /**
@@ -42,7 +43,7 @@ class OrderRepositoryTest {
     @Test
     void findsOrderWithItemsByFetchJoin() {
         Order order = new Order();
-        order.addItem(new OrderItem("Куртка", new BigDecimal("4500.00"), 2));
+        order.addItem(new OrderItem(1L, "Куртка", new BigDecimal("4500.00"), 2));
         Order saved = orderRepository.saveAndFlush(order);
 
         Order loaded = orderRepository.findWithItemsById(saved.getId()).orElseThrow();
@@ -74,7 +75,7 @@ class OrderRepositoryTest {
      */
     private Order orderWith(String title) {
         Order order = new Order();
-        order.addItem(new OrderItem(title, new BigDecimal("2500.00"), 1));
+        order.addItem(new OrderItem(1L, title, new BigDecimal("2500.00"), 1));
         return order;
     }
 }
