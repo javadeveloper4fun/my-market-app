@@ -32,7 +32,7 @@ class ItemRepositoryTest {
         itemRepository.save(testItem("Тестовый рюкзак", "Городской.", "2000.00"));
         Item shirt = itemRepository.save(testItem("Тестовая футболка", "Из хлопка.", "3000.00"));
 
-        Page<Item> result = itemRepository.search("тестовая", PageRequest.of(0, 10));
+        Page<Item> result = itemRepository.searchByText("тестовая", PageRequest.of(0, 10));
 
         assertThat(result.getContent()).containsExactlyInAnyOrder(jacket, shirt);
     }
@@ -46,7 +46,7 @@ class ItemRepositoryTest {
         Item middle = itemRepository.save(testItem("Тестовый рюкзак", "Средняя цена.", "2000.00"));
         Item dearest = itemRepository.save(testItem("Тестовая футболка", "Дорогая.", "3000.00"));
 
-        Page<Item> result = itemRepository.search(
+        Page<Item> result = itemRepository.searchByText(
                 "Тестов", PageRequest.of(0, 10, Sort.by("price").ascending()));
 
         assertThat(result.getContent()).containsExactly(cheapest, middle, dearest);
@@ -61,8 +61,8 @@ class ItemRepositoryTest {
         itemRepository.save(testItem("Тестовый рюкзак", "Вторая.", "2000.00"));
         itemRepository.save(testItem("Тестовая футболка", "Третья.", "3000.00"));
 
-        Page<Item> firstPage = itemRepository.search("Тестов", PageRequest.of(0, 2));
-        Page<Item> secondPage = itemRepository.search("Тестов", PageRequest.of(1, 2));
+        Page<Item> firstPage = itemRepository.searchByText("Тестов", PageRequest.of(0, 2));
+        Page<Item> secondPage = itemRepository.searchByText("Тестов", PageRequest.of(1, 2));
 
         assertThat(firstPage.getContent()).hasSize(2);
         assertThat(firstPage.getTotalElements()).isEqualTo(3);
@@ -72,13 +72,13 @@ class ItemRepositoryTest {
     }
 
     /**
-     * Проверяет, что поиск без текста возвращает все товары витрины.
+     * Проверяет, что запрос без текста поиска возвращает все товары витрины.
      */
     @Test
-    void searchWithoutTextReturnsAllItems() {
+    void findAllReturnsAllItems() {
         Item saved = itemRepository.save(testItem("Тестовая куртка", "Без фильтра.", "1000.00"));
 
-        Page<Item> result = itemRepository.search(null, PageRequest.of(0, 10));
+        Page<Item> result = itemRepository.findAll(PageRequest.of(0, 10));
 
         assertThat(result.getContent()).contains(saved);
     }

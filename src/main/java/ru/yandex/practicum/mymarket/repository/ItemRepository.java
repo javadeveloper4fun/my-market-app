@@ -13,19 +13,18 @@ import ru.yandex.practicum.mymarket.model.Item;
 public interface ItemRepository extends JpaRepository<Item, Long> {
 
     /**
-     * Ищет товары, у которых в названии или описании встречается переданный текст.
-     * Если {@code text} — {@code null}, поиск пропускается и возвращаются все товары.
-     * Пагинация и сортировка задаются объектом {@link Pageable}.
+     * Ищет товары, у которых в названии или описании встречается переданный текст
+     * (нечувствительно к регистру). Для получения всех товаров без фильтра
+     * используется унаследованный {@code findAll(Pageable)}.
      *
-     * @param text     искомая подстрока (нечувствительно к регистру)
+     * @param text     искомая подстрока (не должна быть {@code null})
      * @param pageable настройки страницы и сортировки
      * @return страница найденных товаров
      */
     @Query("""
             select i from Item i
-            where (:text is null
-                or lower(i.title) like lower(concat('%', :text, '%')) escape '\\'
-                or lower(i.description) like lower(concat('%', :text, '%')) escape '\\')
+            where lower(i.title) like lower(concat('%', :text, '%')) escape '\\'
+               or lower(i.description) like lower(concat('%', :text, '%')) escape '\\'
             """)
-    Page<Item> search(@Param("text") String text, Pageable pageable);
+    Page<Item> searchByText(@Param("text") String text, Pageable pageable);
 }

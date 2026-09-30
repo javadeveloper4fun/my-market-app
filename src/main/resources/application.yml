@@ -10,6 +10,9 @@ spring:
     password: market
 
   jpa:
+    # Отключаем привязку EntityManager к запросу (OSIV), чтобы сессия
+    # не удерживалась до конца HTTP-запроса.
+    open-in-view: false
     properties:
       hibernate:
         # В Spring Boot 4 свойство spring.jpa.hibernate.ddl-auto удалено,

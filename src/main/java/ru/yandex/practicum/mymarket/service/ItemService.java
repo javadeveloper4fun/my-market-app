@@ -30,7 +30,7 @@ public class ItemService {
 
     public ItemsPage getItems(String search, String sort, int pageNumber, int pageSize) {
         String searchForView = (search != null) ? search.trim() : "";
-        String querySearch = (searchForView != null && !searchForView.isBlank()) ? escapeLike(searchForView) : null;
+        String querySearch = !searchForView.isBlank() ? escapeLike(searchForView) : null;
         String normalizedSort = (sort == null || sort.isBlank()) ? "NO" : sort;
         Sort jpaSort =
                 switch (normalizedSort) {
@@ -38,7 +38,10 @@ public class ItemService {
                     case "PRICE" -> Sort.by("price");
                     default -> Sort.unsorted();
                 };
-        Page<Item> page = itemRepository.search(querySearch, PageRequest.of(pageNumber - 1, pageSize, jpaSort));
+        PageRequest pageRequest = PageRequest.of(pageNumber - 1, pageSize, jpaSort);
+        Page<Item> page = (querySearch != null)
+                ? itemRepository.searchByText(querySearch, pageRequest)
+                : itemRepository.findAll(pageRequest);
 
         List<CartItem> cartItems = cartItemRepository.findAllWithItem();
         Map<Long, Integer> cartCountByItemId =
