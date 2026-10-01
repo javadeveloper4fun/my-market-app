@@ -3,11 +3,14 @@ spring:
     name: my-market-app
 
   datasource:
-    # Персистентная БД — PostgreSQL, поднимается командой
-    # docker compose up -d (см. docker-compose.yml).
-    url: jdbc:postgresql://localhost:5439/market
-    username: market
-    password: market
+    # Персистентная БД — PostgreSQL (см. docker-compose.yml).
+    # Значения переопределяются переменными окружения при запуске
+    # в Docker: SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME,
+    # SPRING_DATASOURCE_PASSWORD. По умолчанию — локальный PostgreSQL,
+    # доступный по адресу localhost:5439.
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5439/market}
+    username: ${SPRING_DATASOURCE_USERNAME:market}
+    password: ${SPRING_DATASOURCE_PASSWORD:market}
 
   jpa:
     # Отключаем привязку EntityManager к запросу (OSIV), чтобы сессия

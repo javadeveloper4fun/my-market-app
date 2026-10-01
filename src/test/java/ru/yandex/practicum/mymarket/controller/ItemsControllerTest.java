@@ -137,4 +137,16 @@ class ItemsControllerTest {
     void postItemRejectsInvalidAction() throws Exception {
         mockMvc.perform(post("/items/1").param("action", "UNKNOWN")).andExpect(status().isBadRequest());
     }
+
+    /**
+     * Проверяет, что карточка несуществующего товара даёт 404 (а не 500).
+     *
+     * @throws Exception при ошибке выполнения запроса
+     */
+    @Test
+    void getItemReturns404WhenNotFound() throws Exception {
+        when(itemService.getItem(eq(999L))).thenThrow(new IllegalArgumentException("Item not found: 999"));
+
+        mockMvc.perform(get("/items/999")).andExpect(status().isNotFound());
+    }
 }

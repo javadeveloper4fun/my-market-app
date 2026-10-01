@@ -103,4 +103,16 @@ class OrderControllerTest {
 
         mockMvc.perform(post("/buy")).andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/cart/items"));
     }
+
+    /**
+     * Проверяет, что несуществующий заказ даёт 404 (а не 500).
+     *
+     * @throws Exception при ошибке выполнения запроса
+     */
+    @Test
+    void getOrderReturns404WhenNotFound() throws Exception {
+        when(orderService.getOrder(eq(999L))).thenThrow(new IllegalArgumentException("Order not found: 999"));
+
+        mockMvc.perform(get("/orders/999")).andExpect(status().isNotFound());
+    }
 }

@@ -91,6 +91,17 @@ class ItemServiceTest {
     }
 
     @Test
+    void getItemsTreatsZeroOrNegativePageNumberAsFirstPage() {
+        itemRepository.save(new Item("Тестовая куртка", "1", "img1.jpg", new java.math.BigDecimal("1000")));
+
+        ItemsPage page = itemService.getItems("Тестовая", "NO", 0, 2);
+
+        assertThat(page.paging().pageNumber()).isEqualTo(1);
+        assertThat(page.paging().hasPrevious()).isFalse();
+        assertThat(page.rows()).hasSize(1);
+    }
+
+    @Test
     void getItemReturnsCountFromCart() {
         Item item = itemRepository.save(
                 new Item("Тестовый товар", "Описание", "img.jpg", new java.math.BigDecimal("1500")));

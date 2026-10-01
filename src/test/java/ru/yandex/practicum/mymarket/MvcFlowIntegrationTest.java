@@ -85,4 +85,24 @@ class MvcFlowIntegrationTest {
 
         mockMvc.perform(get("/cart/items")).andExpect(status().isOk()).andExpect(model().attribute("total", 0L));
     }
+
+    /**
+     * Проверяет, что несуществующий товар отдаёт 404 на полном стеке.
+     *
+     * @throws Exception при ошибке выполнения запроса
+     */
+    @Test
+    void getItemNotFoundReturns404() throws Exception {
+        mockMvc.perform(get("/items/999999")).andExpect(status().isNotFound());
+    }
+
+    /**
+     * Проверяет, что несуществующий заказ отдаёт 404 на полном стеке.
+     *
+     * @throws Exception при ошибке выполнения запроса
+     */
+    @Test
+    void getOrderNotFoundReturns404() throws Exception {
+        mockMvc.perform(get("/orders/999999")).andExpect(status().isNotFound());
+    }
 }

@@ -38,7 +38,9 @@ public class ItemService {
                     case "PRICE" -> Sort.by("price");
                     default -> Sort.unsorted();
                 };
-        PageRequest pageRequest = PageRequest.of(pageNumber - 1, pageSize, jpaSort);
+        int pageIndex = Math.max(pageNumber - 1, 0);
+        int pageLimit = Math.max(pageSize, 1);
+        PageRequest pageRequest = PageRequest.of(pageIndex, pageLimit, jpaSort);
         Page<Item> page = (querySearch != null)
                 ? itemRepository.searchByText(querySearch, pageRequest)
                 : itemRepository.findAll(pageRequest);

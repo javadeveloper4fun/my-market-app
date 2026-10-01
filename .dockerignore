@@ -1,0 +1,17 @@
+# VCS и IDE
+.git
+.gitignore
+.gitattributes
+.idea
+*.iml
+*.iws
+*.ipr
+
+# Сборка
+.gradle/
+build/*
+!build/libs/
+
+# Временные и аналитические файлы
+*.ps1
+analize*.txt
