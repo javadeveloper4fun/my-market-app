@@ -25,7 +25,9 @@ public class ItemsController {
     }
 
     /**
+     * GET /items — витрина товаров (Спринт 5, Тема 1, Урок 2).
      * Отображает главную страницу витрины с пагинацией, поиском и сортировкой.
+     * Опциональные параметры: search, sort, pageNumber, pageSize.
      *
      * @param pageNumber номер страницы
      * @param pageSize   размер страницы
