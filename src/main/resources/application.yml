@@ -3,6 +3,8 @@ spring:
     name: my-market-app
 
   datasource:
+    # Спринт 5, Тема 2, Урок 1 — DataSource (фабрика подключений).
+    # Общие параметры любой реализации DataSource. По умолчанию — Hikari (пул, 10 соединений).
     # Персистентная БД — PostgreSQL (см. docker-compose.yml).
     # Значения переопределяются переменными окружения при запуске
     # в Docker: SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME,
