@@ -21,6 +21,10 @@ repositories {
 
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+    // Прокси Hibernate предоставляется автоматически, отдельная зависимость не нужна.
+    // Spring Data JPA скрывает EntityManager и Session за интерфейсами репозиториев,
+    // но знать Hibernate нужно: его кэши (L1/L2), dirty checking и N+1
+    // определяют поведение приложения (Спринт 5, Тема 3, Уроки 4-5).
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
 
