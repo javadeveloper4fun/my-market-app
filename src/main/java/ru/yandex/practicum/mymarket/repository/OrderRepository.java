@@ -22,9 +22,12 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     Optional<Order> findWithItemsById(@Param("id") Long id);
 
     /**
-     * Загружает все заказы сразу со строками заказа.
+     * Возвращает все заказы вместе с позициями.
+     * Коллекция {@code items} загружена одним {@code left join fetch} — это обязательное
+     * условие контракта: вызывающий код обращается к {@code items} уже после закрытия
+     * транзакции.
      *
-     * @return список заказов со строками
+     * @return список заказов с инициализированной коллекцией позиций
      */
     @Query("select distinct o from Order o left join fetch o.items")
     List<Order> findAllWithItems();

@@ -27,6 +27,15 @@ public class OrderService {
         this.cartItemRepository = cartItemRepository;
     }
 
+    /**
+     * Возвращает все заказы.
+     *
+     * <p>Коллекция позиций ленивая, поэтому загружается в репозитории через
+     * {@code left join fetch} — иначе обращение к {@code order.getItems()} даст
+     * {@code LazyInitializationException}.
+     *
+     * @return список заказов
+     */
     public List<OrderDto> getOrders() {
         return orderRepository.findAllWithItems().stream()
                 .map(OrderDto::fromEntity)
