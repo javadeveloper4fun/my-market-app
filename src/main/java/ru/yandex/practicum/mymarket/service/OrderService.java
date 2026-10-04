@@ -47,6 +47,9 @@ public class OrderService {
      *
      * @return идентификатор созданного заказа
      */
+    // Спринт 5, Тема 2, Урок 4 — декларативная транзакция.
+    // Вызов снаружи бина (из контроллера) проходит через AOP-прокси:
+    // открытие транзакции → выполнение → commit/rollback по исключению.
     @Transactional
     public long buy() {
         List<CartItem> cartItems = cartItemRepository.findAllWithItem();
