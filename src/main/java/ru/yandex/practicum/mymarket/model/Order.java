@@ -29,6 +29,13 @@ public class Order {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /**
+     * Строки заказа. Связь — «обратная» сторона ({@code mappedBy}), поэтому колонка
+     * {@code order_id} создаётся в {@code order_item} на стороне {@code OrderItem}.
+     *
+     * <p>{@code CascadeType.ALL} позволяет сохранить заказ со строками одним
+     * {@code save()}, {@code orphanRemoval} удаляет строки вместе с заказом.
+     */
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderItem> items = new ArrayList<>();
 
