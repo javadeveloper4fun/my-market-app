@@ -15,6 +15,8 @@ import ru.yandex.practicum.mymarket.repository.ItemRepository;
 // PROPAGATION_REQUIRED (по умолчанию): присоединиться к текущей транзакции
 // или открыть свою. ISOLATION_DEFAULT: уровень изоляции — как в БД.
 // Методы, изменяющие данные, помечают @Transactional без readOnly.
+// Аннотация работает только на публичных методах: прокси не переопределяет
+// private-методы, поэтому @Transactional на них игнорируется.
 @Service
 @Transactional(readOnly = true)
 public class CartService {
