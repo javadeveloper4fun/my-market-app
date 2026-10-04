@@ -28,6 +28,13 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
 
+    // Спринт 5, Тема 4 — миграции схемы БД.
+    // Версию подставляет spring-boot-dependencies (dependencyManagement ниже),
+    // поэтому номер версии здесь не указывается.
+    // LiquibaseAutoConfiguration включается автоматически, когда в classpath
+    // есть и DataSource, и liquibase-core.
+    implementation 'org.liquibase:liquibase-core'
+
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
     testCompileOnly 'org.projectlombok:lombok'
