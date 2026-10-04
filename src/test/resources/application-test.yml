@@ -9,18 +9,20 @@ spring:
     username: sa
     password: ""
 
+  liquibase:
+    # Тесты применяют тот же changelog, что и основной профиль: схема
+    # проверяется на переносимость между PostgreSQL и H2.
+    # context: test исключает changeset'ы с другими контекстами, в частности
+    # стартовое наполнение витрины (context: seed). Изменения без context
+    # применяются в любом случае. Тесты наполняют базу своими данными.
+    contexts: test
+
   jpa:
     properties:
       hibernate:
-        # Контекст теста стартует на пустой схеме каждого прогона
-        # (Hibernate создаёт её по сущностям, см. spring.jpa.properties).
+        # Схему тестовой БД создаёт Liquibase из того же changelog,
+        # что и основной профиль, поэтому hbm2ddl=create-drop больше не нужен.
+        # validate сверяет схему с сущностями: если changelog разойдётся
+        # с @Entity, тесты упадут на старте контекста.
         hbm2ddl:
-          auto: create-drop
-    # data.sql накатывается уже после создания схемы Hibernate.
-    defer-datasource-initialization: true
-
-  sql:
-    init:
-      # data.sql не накатывается в тестовом профиле: @DataJpaTest и
-      # @SpringBootTest-тесты сами наполняют схему изолированными данными.
-      mode: never
+          auto: validate

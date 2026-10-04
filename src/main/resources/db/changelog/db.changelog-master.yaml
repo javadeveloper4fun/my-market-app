@@ -1,0 +1,269 @@
+# ===================================================================
+# Спринт 5, Тема 4 «Миграция данных с помощью Liquibase».
+#
+# Этот файл — единственный источник правды о структуре БД.
+# Liquibase применяет changeset'ы при старте приложения в порядке
+# записи и пропускает уже применённые (они отмечены в таблице
+# DATABASECHANGELOG). Поэтому уже применённый changeset не редактируется:
+# изменение меняет его MD5SUM, и Liquibase откажется стартовать.
+#
+# Схема ниже описана вручную и обязана совпадать с ожиданиями Hibernate,
+# потому что в application.yml включён hbm2ddl=validate.
+# Типы выбраны диалектно-нейтральными: одинаково валидны для PostgreSQL
+# и для H2 в режиме MODE=PostgreSQL, который используется в тестах.
+# ===================================================================
+
+databaseChangeLog:
+
+  # ------------------------------------------------------------------
+  # items — витрина. img_path идёт подчёркиванием из поля imgPath
+  # (стратегия именования Hibernate). price — NUMERIC(10,2), а не FLOAT:
+  # деньги нельзя хранить в двоичном формате.
+  # ------------------------------------------------------------------
+  - changeSet:
+      id: "1"
+      author: "student"
+      comment: "Таблица товаров витрины"
+      changes:
+        - createTable:
+            tableName: items
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_items
+                    nullable: false
+              - column:
+                  name: title
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: description
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: img_path
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: price
+                  type: NUMERIC(10,2)
+                  constraints:
+                    nullable: false
+
+  # ------------------------------------------------------------------
+  # orders — заказ покупателя. В таблице только идентификатор:
+  # связи заказ → позиции объявлены через mappedBy, поэтому колонка
+  # order_id создаётся в order_item, а здесь её нет.
+  # ------------------------------------------------------------------
+  - changeSet:
+      id: "2"
+      author: "student"
+      comment: "Таблица заказов"
+      changes:
+        - createTable:
+            tableName: orders
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_orders
+                    nullable: false
+
+  # ------------------------------------------------------------------
+  # cart_item — позиция корзины. item_id уникален: @OneToOne в сущности
+  # запрещает класть один товар в корзину дважды.
+  # ------------------------------------------------------------------
+  - changeSet:
+      id: "3"
+      author: "student"
+      comment: "Таблица позиций корзины"
+      changes:
+        - createTable:
+            tableName: cart_item
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_cart_item
+                    nullable: false
+              - column:
+                  name: item_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: uq_cart_item_item
+              - column:
+                  name: count
+                  type: INTEGER
+                  constraints:
+                    nullable: false
+
+  # ------------------------------------------------------------------
+  # order_item — позиция заказа как снимок на момент покупки.
+  # Внимание: item_id здесь НЕ внешний ключ и ссылается на items.id.
+  # Товар в заказе — зафиксированный снимок, а не живая ссылка на каталог,
+  # поэтому переименование или удаление товара не должны менять заказы.
+  # ------------------------------------------------------------------
+  - changeSet:
+      id: "4"
+      author: "student"
+      comment: "Таблица позиций заказа"
+      changes:
+        - createTable:
+            tableName: order_item
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_order_item
+                    nullable: false
+              - column:
+                  name: order_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: item_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: title
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: price
+                  type: NUMERIC(10,2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: count
+                  type: INTEGER
+                  constraints:
+                    nullable: false
+
+  # ------------------------------------------------------------------
+  # Внешние ключи вынесены в отдельные changeset'ы: ограничение
+  # нельзя добавить раньше, чем существуют обе таблицы, а createTable
+  # для order_item идёт позже createTable для items и orders.
+  # ------------------------------------------------------------------
+  - changeSet:
+      id: "5"
+      author: "student"
+      comment: "Внешний ключ позиции корзины на товар"
+      changes:
+        - addForeignKeyConstraint:
+            baseTableName: cart_item
+            baseColumnNames: item_id
+            constraintName: fk_cart_item_item
+            referencedTableName: items
+            referencedColumnNames: id
+
+  - changeSet:
+      id: "6"
+      author: "student"
+      comment: "Внешний ключ позиции заказа на заказ"
+      changes:
+        - addForeignKeyConstraint:
+            baseTableName: order_item
+            baseColumnNames: order_id
+            constraintName: fk_order_item_order
+            referencedTableName: orders
+            referencedColumnNames: id
+
+  # ------------------------------------------------------------------
+  # Стартовое наполнение витрины четырьмя товарами.
+  # Раньше это делал data.sql, но его содержимое не попадало в историю
+  # изменений и никак не контролировалось Liquibase.
+  #
+  # context: seed — changeset применится только там, где запрошен этот
+  # контекст. В application.yml контекст не задан, поэтому стартовое
+  # наполнение выполняется; в application-test.yml задан context: test,
+  # и этот changeset пропускается — тесты наполняют базу своими данными.
+  # Изменения без context выполняются при любом запуске.
+  # Идентификаторы не заданы: их выдаёт autoIncrement, как и раньше в data.sql.
+  # ------------------------------------------------------------------
+  - changeSet:
+      id: "7"
+      author: "student"
+      context: "seed"
+      comment: "Стартовое наполнение витрины"
+      changes:
+        - insert:
+            tableName: items
+            columns:
+              - column:
+                  name: title
+                  value: "Куртка"
+              - column:
+                  name: description
+                  value: "Утеплённая куртка для межсезонья."
+              - column:
+                  name: img_path
+                  value: "images/jacket.jpg"
+              - column:
+                  name: price
+                  value: "4500.00"
+        - insert:
+            tableName: items
+            columns:
+              - column:
+                  name: title
+                  value: "Ботинки"
+              - column:
+                  name: description
+                  value: "Кожаные ботинки с мембраной."
+              - column:
+                  name: img_path
+                  value: "images/boots.jpg"
+              - column:
+                  name: price
+                  value: "5200.00"
+        - insert:
+            tableName: items
+            columns:
+              - column:
+                  name: title
+                  value: "Рюкзак"
+              - column:
+                  name: description
+                  value: "Городской рюкзак с ноутбучным отсеком."
+              - column:
+                  name: img_path
+                  value: "images/backpack.jpg"
+              - column:
+                  name: price
+                  value: "2800.00"
+        - insert:
+            tableName: items
+            columns:
+              - column:
+                  name: title
+                  value: "Плед"
+              - column:
+                  name: description
+                  value: "Мягкий плед из флиса, 150x200 см."
+              - column:
+                  name: img_path
+                  value: "images/plaid.jpg"
+              - column:
+                  name: price
+                  value: "1600.00"

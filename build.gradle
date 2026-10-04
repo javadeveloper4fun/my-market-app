@@ -29,11 +29,15 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
 
     // Спринт 5, Тема 4 — миграции схемы БД.
-    // Версию подставляет spring-boot-dependencies (dependencyManagement ниже),
-    // поэтому номер версии здесь не указывается.
-    // LiquibaseAutoConfiguration включается автоматически, когда в classpath
-    // есть и DataSource, и liquibase-core.
+    // Нужны две зависимости, и это не дублирование:
+    // liquibase-core — сам Liquibase (разбор changelog, выполнение changeset'ов),
+    // версию подставляет spring-boot-dependencies из dependencyManagement ниже.
+    // spring-boot-liquibase — автоконфигурация Spring Boot. В Spring Boot 4
+    // автоконфигурация разнесена по отдельным модулям, и LiquibaseAutoConfiguration
+    // лежит именно в spring-boot-liquibase. Без него одного liquibase-core
+    // недостаточно: бин liquibase просто не создастся, миграции не выполнятся.
     implementation 'org.liquibase:liquibase-core'
+    implementation 'org.springframework.boot:spring-boot-liquibase'
 
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'

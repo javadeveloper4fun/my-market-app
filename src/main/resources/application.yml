@@ -14,6 +14,14 @@ spring:
     username: ${SPRING_DATASOURCE_USERNAME:market}
     password: ${SPRING_DATASOURCE_PASSWORD:market}
 
+  liquibase:
+    # Спринт 5, Тема 4, Урок 1 — миграции схемы БД.
+    # Схему создаёт Liquibase из файла миграций, а не Hibernate.
+    # Каждый changeset применяется один раз; применённые отмечаются
+    # в служебной таблице DATABASECHANGELOG и при следующем старте
+    # пропускаются. Запуск приложения = применение недостающих миграций.
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+
   jpa:
     # Отключаем привязку EntityManager к запросу (OSIV), чтобы сессия
     # не удерживалась до конца HTTP-запроса.
@@ -21,19 +29,15 @@ spring:
     properties:
       hibernate:
         # В Spring Boot 4 свойство spring.jpa.hibernate.ddl-auto удалено,
-        # поэтому режим генерации схемы задаётся Hibernate напрямую.
-        # create — полностью пересоздаёт схему по сущностям при каждом старте.
-        # Цена: все данные теряются. Только для учебного проекта;
-        # в проде нужны Flyway/Liquibase (Спринт 5, Тема 4) и hbm2ddl=none.
+        # поэтому режим задаётся Hibernate напрямую.
+        # validate — только сверяет схему БД с сущностями, ничего не меняет.
+        # Раньше здесь был create: он пересоздавал таблицы при каждом старте
+        # и уничтожал данные, поэтому данные приходилось хранить в data.sql
+        # и накатывать заново при каждом запуске.
+        # Теперь схему и стартовые данные создаёт Liquibase,
+        # а Hibernate лишь проверяет, что changelog совпадает с сущностями.
         hbm2ddl:
-          auto: create
-    # data.sql выполняется после того, как Hibernate создаст таблицы.
-    defer-datasource-initialization: true
-
-  sql:
-    init:
-      # Накатывать data.sql (стартовое наполнение витрины) всегда.
-      mode: always
+          auto: validate
 
 server:
   port: 8080
