@@ -3,8 +3,8 @@ spring:
     name: my-market-app
 
   datasource:
-    # Тестовый профиль: встроенная H2 в режиме совместимости
-    # с PostgreSQL, поэтому для запуска тестов Docker не нужен.
+    # Спринт 5, Тема 2, Урок 1 — тестовый профиль: H2 вместо PostgreSQL (MODE=PostgreSQL).
+    # Альтернатива для проверки поведения, близкого к проду, — Testcontainers с настоящей СУБД.
     url: jdbc:h2:mem:market;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
     username: sa
     password: ""
