@@ -267,3 +267,36 @@ databaseChangeLog:
               - column:
                   name: price
                   value: "1600.00"
+
+  # ------------------------------------------------------------------
+  # Индексы, которых Hibernate не создаёт.
+  #
+  # Hibernate генерирует DDL только из того, что описано в сущностях:
+  # @Entity, @Column, @Table(indexes = ...). В OrderItem.java индексов нет,
+  # поэтому hbm2ddl=create их бы не создал — и без Liquibase их не было бы
+  # вовсе. Миграции дают то, что ORM выразить не позволяет.
+  #
+  # Зачем он нужен: позиции заказа читаются по order_id при каждой выборке
+  # заказа (left join fetch o.items в OrderRepository). Без индекса PostgreSQL
+  # читает таблицу order_item целиком на каждый запрос списка заказов —
+  # тем заметнее, чем больше заказов накопилось.
+  #
+  # Этот индекс добавлен новым changeset, а не правкой уже применённых:
+  # изменение применённого changeset меняет его MD5SUM, и Liquibase
+  # отказывается стартовать.
+  #
+  # На cart_item индекс на item_id не нужен: там уже есть уникальное
+  # ограничение uq_cart_item_item, а в PostgreSQL уникальное ограничение
+  # само создаёт индекс.
+  # ------------------------------------------------------------------
+  - changeSet:
+      id: "8"
+      author: "student"
+      comment: "Индекс на order_item.order_id для выборки позиций заказа"
+      changes:
+        - createIndex:
+            tableName: order_item
+            indexName: idx_order_item_order_id
+            columns:
+              - column:
+                  name: order_id
