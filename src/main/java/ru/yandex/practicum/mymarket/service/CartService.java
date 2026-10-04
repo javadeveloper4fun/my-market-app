@@ -11,6 +11,10 @@ import ru.yandex.practicum.mymarket.model.Item;
 import ru.yandex.practicum.mymarket.repository.CartItemRepository;
 import ru.yandex.practicum.mymarket.repository.ItemRepository;
 
+// Спринт 5, Тема 2, Урок 2 — параметры TransactionDefinition.
+// PROPAGATION_REQUIRED (по умолчанию): присоединиться к текущей транзакции
+// или открыть свою. ISOLATION_DEFAULT: уровень изоляции — как в БД.
+// Методы, изменяющие данные, помечают @Transactional без readOnly.
 @Service
 @Transactional(readOnly = true)
 public class CartService {
