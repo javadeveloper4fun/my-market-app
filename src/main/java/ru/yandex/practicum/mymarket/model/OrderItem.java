@@ -28,6 +28,11 @@ public class OrderItem {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /**
+     * Заказ, которому принадлежит строка. Это «владелец» связи ({@code @ManyToOne}),
+     * поэтому колонка {@code order_id} создаётся здесь. Обратная сторона —
+     * {@code Order.items} с {@code mappedBy = "order"}.
+     */
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "order_id", nullable = false)
     private Order order;
