@@ -36,6 +36,13 @@ public class OrderService {
         return OrderDto.fromEntity(order);
     }
 
+    /**
+     * Оформление заказа (Спринт 5, Тема 2, Урок 2 — транзакции).
+     * Создание заказа, его позиций и очистка корзины должны выполниться
+     * одной транзакцией: иначе возможна покупка без заказа или товар в корзине после покупки.
+     *
+     * @return идентификатор созданного заказа
+     */
     @Transactional
     public long buy() {
         List<CartItem> cartItems = cartItemRepository.findAllWithItem();
