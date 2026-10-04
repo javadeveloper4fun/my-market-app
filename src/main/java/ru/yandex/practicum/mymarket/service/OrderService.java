@@ -11,6 +11,10 @@ import ru.yandex.practicum.mymarket.model.OrderItem;
 import ru.yandex.practicum.mymarket.repository.CartItemRepository;
 import ru.yandex.practicum.mymarket.repository.OrderRepository;
 
+// Спринт 5, Тема 2, Урок 2 — транзакции.
+// Уровень "высокий": @Transactional — декларативная аннотация + AOP-прокси.
+// Spring открывает транзакцию, вызывает метод, фиксирует или откатывает.
+// Под капотом используется TransactionManager (JpaTransactionManager).
 @Service
 @Transactional(readOnly = true)
 public class OrderService {
