@@ -1,0 +1,100 @@
+# ===================================================================
+# Стартовое наполнение витрины четырьмя товарами.
+#
+# Раньше это делал data.sql, но его содержимое не попадало в историю
+# изменений и никак не контролировалось Liquibase.
+#
+# context: seed — changeset применится только там, где запрошен этот
+# контекст. В application.yml контекст не задан, поэтому стартовое
+# наполнение выполняется; в application-test.yml задан context: test,
+# и этот changeset пропускается — тесты наполняют базу своими данными.
+# Изменения без context выполняются при любом запуске.
+#
+# Идентификаторы не заданы: их выдаёт autoIncrement, как и раньше в data.sql.
+# ===================================================================
+
+databaseChangeLog:
+
+  - changeSet:
+      id: "7"
+      author: "student"
+      context: "seed"
+      comment: "Стартовое наполнение витрины"
+      onFailMessage: "В таблице items уже есть товары: повторное наполнение привело бы к дублям"
+      # Проверяется, что таблица пуста, а не просто существует: tableExists
+      # был бы здесь неуместен, потому что таблицу создаёт changeset 1, и
+      # на втором запуске она всегда есть. Нужна именно пустота — иначе
+      # повторное наполнение каталога продублировало бы товары.
+      # Счётчик обращён в скалярное подмножество: у COUNT(*) есть числовой
+      # тип, а у целой строки его нет, поэтому ожидаем 0.
+      preConditions:
+        - sqlCheck:
+            expectedResult: 0
+            sql: SELECT COUNT(*) FROM items
+      changes:
+        - insert:
+            tableName: items
+            columns:
+              - column:
+                  name: title
+                  value: "Куртка"
+              - column:
+                  name: description
+                  value: "Утеплённая куртка для межсезонья."
+              - column:
+                  name: img_path
+                  value: "images/jacket.jpg"
+              - column:
+                  name: price
+                  value: "4500.00"
+        - insert:
+            tableName: items
+            columns:
+              - column:
+                  name: title
+                  value: "Ботинки"
+              - column:
+                  name: description
+                  value: "Кожаные ботинки с мембраной."
+              - column:
+                  name: img_path
+                  value: "images/boots.jpg"
+              - column:
+                  name: price
+                  value: "5200.00"
+        - insert:
+            tableName: items
+            columns:
+              - column:
+                  name: title
+                  value: "Рюкзак"
+              - column:
+                  name: description
+                  value: "Городской рюкзак с ноутбучным отсеком."
+              - column:
+                  name: img_path
+                  value: "images/backpack.jpg"
+              - column:
+                  name: price
+                  value: "2800.00"
+        - insert:
+            tableName: items
+            columns:
+              - column:
+                  name: title
+                  value: "Плед"
+              - column:
+                  name: description
+                  value: "Мягкий плед из флиса, 150x200 см."
+              - column:
+                  name: img_path
+                  value: "images/plaid.jpg"
+              - column:
+                  name: price
+                  value: "1600.00"
+      rollback:
+        # Откат удаляет вставленные строки, а не таблицу: сама таблица
+        # остаётся, её создаёт changeset 1.
+        - delete:
+            tableName: items
+            where: title in ('Куртка', 'Ботинки', 'Рюкзак', 'Плед')

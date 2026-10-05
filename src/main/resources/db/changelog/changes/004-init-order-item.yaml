@@ -1,0 +1,63 @@
+# ===================================================================
+# Таблица позиций заказа как снимок на момент покупки.
+#
+# item_id здесь НЕ внешний ключ и не ссылается на items.id.
+# Товар в заказе — зафиксированный снимок (title и price хранятся
+# здесь же), а не живая ссылка на каталог. Благодаря этому переименование
+# или удаление товара не меняют уже оформленные заказы.
+#
+# Связь с заказом (order_id) — внешний ключ, он добавляется позже,
+# в 005-add-foreign-keys.yaml.
+# ===================================================================
+
+databaseChangeLog:
+
+  - changeSet:
+      id: "4"
+      author: "student"
+      comment: "Таблица позиций заказа"
+      onFailMessage: "Таблица order_item уже существует: база создана в обход Liquibase"
+      preConditions:
+        - not:
+            - tableExists:
+                tableName: order_item
+      changes:
+        - createTable:
+            tableName: order_item
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_order_item
+                    nullable: false
+              - column:
+                  name: order_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: item_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: title
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: price
+                  type: NUMERIC(10,2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: count
+                  type: INTEGER
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropTable:
+            tableName: order_item

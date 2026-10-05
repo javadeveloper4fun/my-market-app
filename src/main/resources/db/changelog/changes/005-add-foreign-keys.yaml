@@ -1,0 +1,54 @@
+# ===================================================================
+# Внешние ключи.
+#
+# Вынесены в отдельные changeset'ы, потому что ограничение нельзя
+# добавить раньше, чем существуют обе участвующие таблицы, а часть
+# таблиц создаётся позже остальных.
+#
+# У order_item.item_id внешнего ключа намеренно нет — это снимок товара,
+# а не ссылка на каталог (см. 004-init-order-item.yaml).
+# ===================================================================
+
+databaseChangeLog:
+
+  - changeSet:
+      id: "5"
+      author: "student"
+      comment: "Внешний ключ позиции корзины на товар"
+      onFailMessage: "Внешний ключ fk_cart_item_item уже существует"
+      preConditions:
+        - not:
+            - foreignKeyConstraintExists:
+                constraintName: fk_cart_item_item
+      changes:
+        - addForeignKeyConstraint:
+            baseTableName: cart_item
+            baseColumnNames: item_id
+            constraintName: fk_cart_item_item
+            referencedTableName: items
+            referencedColumnNames: id
+      rollback:
+        - dropForeignKeyConstraint:
+            baseTableName: cart_item
+            constraintName: fk_cart_item_item
+
+  - changeSet:
+      id: "6"
+      author: "student"
+      comment: "Внешний ключ позиции заказа на заказ"
+      onFailMessage: "Внешний ключ fk_order_item_order уже существует"
+      preConditions:
+        - not:
+            - foreignKeyConstraintExists:
+                constraintName: fk_order_item_order
+      changes:
+        - addForeignKeyConstraint:
+            baseTableName: order_item
+            baseColumnNames: order_id
+            constraintName: fk_order_item_order
+            referencedTableName: orders
+            referencedColumnNames: id
+      rollback:
+        - dropForeignKeyConstraint:
+            baseTableName: order_item
+            constraintName: fk_order_item_order
