@@ -17,6 +17,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.OrderDto;
+import ru.yandex.practicum.mymarket.service.OrderNotFoundException;
 import ru.yandex.practicum.mymarket.service.OrderService;
 
 /**
@@ -111,7 +112,7 @@ class OrderControllerTest {
      */
     @Test
     void getOrderReturns404WhenNotFound() throws Exception {
-        when(orderService.getOrder(eq(999L))).thenThrow(new IllegalArgumentException("Order not found: 999"));
+        when(orderService.getOrder(eq(999L))).thenThrow(new OrderNotFoundException(999L));
 
         mockMvc.perform(get("/orders/999")).andExpect(status().isNotFound());
     }

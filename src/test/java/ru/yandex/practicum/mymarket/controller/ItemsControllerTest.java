@@ -23,6 +23,7 @@ import ru.yandex.practicum.mymarket.dto.ItemsPage;
 import ru.yandex.practicum.mymarket.dto.Paging;
 import ru.yandex.practicum.mymarket.service.Action;
 import ru.yandex.practicum.mymarket.service.CartService;
+import ru.yandex.practicum.mymarket.service.ItemNotFoundException;
 import ru.yandex.practicum.mymarket.service.ItemService;
 
 /**
@@ -157,8 +158,29 @@ class ItemsControllerTest {
      */
     @Test
     void getItemReturns404WhenNotFound() throws Exception {
-        when(itemService.getItem(eq(999L))).thenThrow(new IllegalArgumentException("Item not found: 999"));
+        when(itemService.getItem(eq(999L))).thenThrow(new ItemNotFoundException(999L));
 
         mockMvc.perform(get("/items/999")).andExpect(status().isNotFound());
+    }
+
+    /**
+     * Проверяет, что невалидный {@code action} даёт 400: раньше такая ошибка попадала в
+     * обработчик «не найдено» и отдавала 404.
+     *
+     * @throws Exception при ошибке выполнения запроса
+     */
+    @Test
+    void itemsWithInvalidActionReturns400() throws Exception {
+        mockMvc.perform(post("/items").param("action", "UNKNOWN")).andExpect(status().isBadRequest());
+    }
+
+    /**
+     * Проверяет, что настоящий некорректный аргумент даёт 400, а не 404.
+     *
+     * @throws Exception при ошибке выполнения запроса
+     */
+    @Test
+    void itemWithInvalidIdTypeReturns400() throws Exception {
+        mockMvc.perform(get("/items/abc")).andExpect(status().isBadRequest());
     }
 }

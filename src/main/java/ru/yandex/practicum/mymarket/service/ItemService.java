@@ -58,8 +58,7 @@ public class ItemService {
     }
 
     public ItemDto getItem(long id) {
-        Item item =
-                itemRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("Item not found: " + id));
+        Item item = itemRepository.findById(id).orElseThrow(() -> new ItemNotFoundException(id));
         int count = cartItemRepository.findByItemId(id).map(CartItem::getCount).orElse(0);
         return ItemDto.fromEntity(item, count);
     }

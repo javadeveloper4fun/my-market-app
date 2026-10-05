@@ -5,6 +5,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import ru.yandex.practicum.mymarket.service.ItemNotFoundException;
+import ru.yandex.practicum.mymarket.service.OrderNotFoundException;
 
 /**
  * Глобальная обработка исключений контроллеров.
@@ -13,13 +15,24 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 public class GlobalExceptionHandler {
 
     /**
-     * Превращает исключение «сущность не найдена» в ответ со статусом 404.
+     * Превращает исключение «товар не найден» в ответ со статусом 404.
      *
-     * @param e исключение о ненайденной сущности
+     * @param e исключение о ненайденном товаре
      * @return ответ со статусом 404
      */
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Void> handleNotFound(IllegalArgumentException e) {
+    @ExceptionHandler(ItemNotFoundException.class)
+    public ResponseEntity<Void> handleItemNotFound(ItemNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+    }
+
+    /**
+     * Превращает исключение «заказ не найден» в ответ со статусом 404.
+     *
+     * @param e исключение о ненайденном заказе
+     * @return ответ со статусом 404
+     */
+    @ExceptionHandler(OrderNotFoundException.class)
+    public ResponseEntity<Void> handleOrderNotFound(OrderNotFoundException e) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
     }
 
@@ -30,7 +43,7 @@ public class GlobalExceptionHandler {
      * {@link IllegalArgumentException}, но его первопричина (отказ конвертации
      * в тип параметра) — тоже IllegalArgumentException («No enum constant ...»):
      * резолвер {@code @ExceptionHandler} обходит цепочку {@link Throwable#getCause()},
-     * и без этого метода невалидный action попал бы в {@link #handleNotFound}
+     * и без этого метода невалидный action попал бы в {@link #handleIllegalArgument}
      * и вернул бы 404 вместо 400.
      *
      * @param e исключение ошибки конвертации
@@ -38,6 +51,21 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<Void> handleTypeMismatch(MethodArgumentTypeMismatchException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+    }
+
+    /**
+     * Возвращает 400 при некорректном аргументе, переданном в метод контроллера.
+     *
+     * <p>Обработчик объявлен отдельным типом, а не общим для «не найдено»: когда оба случая
+     * отдавали 404, любая настоящая ошибка в аргументе тоже превращалась в 404 и выглядела
+     * как успешный запрос к отсутствующему ресурсу.
+     *
+     * @param e исключение некорректного аргумента
+     * @return ответ со статусом 400
+     */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Void> handleIllegalArgument(IllegalArgumentException e) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
     }
 }

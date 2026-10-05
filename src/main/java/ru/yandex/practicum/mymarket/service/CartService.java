@@ -56,9 +56,7 @@ public class CartService {
                     CartItem ci = cartItemOpt.get();
                     ci.setCount(ci.getCount() + 1);
                 } else {
-                    Item item = itemRepository
-                            .findById(itemId)
-                            .orElseThrow(() -> new IllegalArgumentException("Item not found: " + itemId));
+                    Item item = itemRepository.findById(itemId).orElseThrow(() -> new ItemNotFoundException(itemId));
                     cartItemRepository.save(new CartItem(item, 1));
                 }
             }

@@ -43,9 +43,7 @@ public class OrderService {
     }
 
     public OrderDto getOrder(long id) {
-        Order order = orderRepository
-                .findWithItemsById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Order not found: " + id));
+        Order order = orderRepository.findWithItemsById(id).orElseThrow(() -> new OrderNotFoundException(id));
         return OrderDto.fromEntity(order);
     }
 
