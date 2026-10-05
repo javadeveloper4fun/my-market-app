@@ -8,6 +8,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.yandex.practicum.mymarket.dto.CartItemCount;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.ItemsPage;
 import ru.yandex.practicum.mymarket.dto.Paging;
@@ -45,9 +46,14 @@ public class ItemService {
                 ? itemRepository.searchByText(querySearch, pageRequest)
                 : itemRepository.findAll(pageRequest);
 
-        List<CartItem> cartItems = cartItemRepository.findAllWithItem();
-        Map<Long, Integer> cartCountByItemId =
-                cartItems.stream().collect(Collectors.toMap(ci -> ci.getItem().getId(), CartItem::getCount));
+        // Количество в корзине запрашивается только для товаров текущей страницы: выборка не
+        // зависит от размера корзины. На пустой странице запрос не выполняется, чтобы не
+        // передавать в IN пустой список идентификаторов.
+        List<Long> itemIds = page.getContent().stream().map(Item::getId).toList();
+        Map<Long, Integer> cartCountByItemId = itemIds.isEmpty()
+                ? Map.of()
+                : cartItemRepository.findCountsByItemIds(itemIds).stream()
+                        .collect(Collectors.toMap(CartItemCount::getItemId, CartItemCount::getItemCount));
 
         List<ItemDto> items = page.getContent().stream()
                 .map(item -> ItemDto.fromEntity(item, cartCountByItemId.getOrDefault(item.getId(), 0)))

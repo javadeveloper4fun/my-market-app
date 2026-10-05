@@ -3,12 +3,14 @@ package ru.yandex.practicum.mymarket.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import ru.yandex.practicum.mymarket.PostgreSqlTestContainerConfiguration;
+import ru.yandex.practicum.mymarket.model.CartItem;
 import ru.yandex.practicum.mymarket.model.Item;
 
 /**
@@ -30,6 +32,9 @@ class ItemRepositoryPostgreSqlTest {
 
     @Autowired
     private ItemRepository itemRepository;
+
+    @Autowired
+    private CartItemRepository cartItemRepository;
 
     /**
      * Проверяет, что цена сохраняется с точностью до копеек.
@@ -71,5 +76,46 @@ class ItemRepositoryPostgreSqlTest {
 
         assertThat(found.getContent()).hasSize(1);
         assertThat(found.getContent().getFirst().getTitle()).isEqualTo("Куртка");
+    }
+
+    /**
+     * Проверяет, что количество товара в корзине возвращается только для запрошенных
+     * идентификаторов.
+     *
+     * <p>Запрос {@code CartItemRepository.findCountsByItemIds} выбирает две скалярные
+     * колонки и ограничен списком идентификаторов. Если ограничение потерялось, выборка
+     * вернула бы количество лишнего товара, и витрина показала бы ненулевой счётчик
+     * у товара, которого в корзине нет.
+     */
+    @Test
+    void countsCartItemsOnlyForRequestedIds() {
+        Item jacket = itemRepository.saveAndFlush(
+                new Item("Куртка", "Тёплая куртка", "images/jacket.jpg", new BigDecimal("4500.00")));
+        Item hat = itemRepository.saveAndFlush(
+                new Item("Шапка", "Тёплая шапка", "images/boots.jpg", new BigDecimal("999.99")));
+        cartItemRepository.saveAndFlush(new CartItem(jacket, 3));
+
+        var counts = cartItemRepository.findCountsByItemIds(List.of(hat.getId()));
+
+        assertThat(counts).isEmpty();
+    }
+
+    /**
+     * Проверяет, что количество возвращается для товара, который действительно в корзине.
+     *
+     * <p>Дополняет {@link #countsCartItemsOnlyForRequestedIds}: вместе тесты отделяют
+     * правильную фильтрацию от пустого результата.
+     */
+    @Test
+    void countsCartItemForRequestedId() {
+        Item jacket = itemRepository.saveAndFlush(
+                new Item("Куртка", "Тёплая куртка", "images/jacket.jpg", new BigDecimal("4500.00")));
+        cartItemRepository.saveAndFlush(new CartItem(jacket, 3));
+
+        var counts = cartItemRepository.findCountsByItemIds(List.of(jacket.getId()));
+
+        assertThat(counts).hasSize(1);
+        assertThat(counts.getFirst().getItemId()).isEqualTo(jacket.getId());
+        assertThat(counts.getFirst().getItemCount()).isEqualTo(3);
     }
 }

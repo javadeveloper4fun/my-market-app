@@ -101,6 +101,33 @@ class ItemServiceTest {
         assertThat(page.rows()).hasSize(1);
     }
 
+    /**
+     * Проверяет, что поиск отбрасывает несовпадающие товары.
+     *
+     * <p>Остальные тесты используют термин, совпадающий со всеми сохранёнными товарами,
+     * поэтому проходят и при полностью отключённом поиске: страница возвращает ту же
+     * выборку. Здесь термин подходит только одному товару из трёх, а проверяется всё
+     * содержимое строки, а не её первый элемент.
+     *
+     * <p>Термин взят из описания, которого нет у seed-данных: они загружаются changelog'ом
+     * в ту же базу, и поиск по названию товара нашёл бы среди них «Рюкзак».
+     */
+    @Test
+    void getItemsExcludesNonMatchingItemsFromRow() {
+        itemRepository.save(new Item("Тестовая куртка", "Зимняя", "img1.jpg", new java.math.BigDecimal("1000")));
+        itemRepository.save(
+                new Item("Тестовый рюкзак", "Городской рюкзак", "img2.jpg", new java.math.BigDecimal("2000")));
+        itemRepository.save(new Item("Тестовая футболка", "Летняя", "img3.jpg", new java.math.BigDecimal("3000")));
+
+        ItemsPage page = itemService.getItems("Городской", "NO", 1, 10);
+
+        assertThat(page.rows()).hasSize(1);
+        // Строка дополняется пустыми заглушками до трёх элементов, поэтому считаем
+        // только реальные товары: заглушки отфильтровывает идентификатор -1.
+        assertThat(page.rows().get(0)).filteredOn(dto -> dto.id() != -1).hasSize(1);
+        assertThat(page.rows().get(0).getFirst().title()).isEqualTo("Тестовый рюкзак");
+    }
+
     @Test
     void getItemReturnsCountFromCart() {
         Item item = itemRepository.save(
