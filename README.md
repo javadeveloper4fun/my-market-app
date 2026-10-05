@@ -13,7 +13,7 @@
 ## Требования
 
 - Java 21;
-- Docker и Docker Compose — только для запуска PostgreSQL и самого приложения в контейнере; для сборки и тестов Docker не нужен;
+- Docker — нужен для запуска PostgreSQL и самого приложения в контейнере, а также для части тестов (см. «Сборка и тесты»);
 - Gradle (не обязателен — в проекте есть Gradle Wrapper).
 
 ## Сборка и тесты
@@ -22,9 +22,15 @@
 ./gradlew build
 ```
 
-Команда собирает проект, прогоняет линтеры (checkstyle, spotless) и интеграционные тесты (JUnit 5, Spring Boot Test, MockMvc, DataJpaTest). Готовый Executable JAR лежит в `build/libs/my-market-app-0.0.1-SNAPSHOT.jar`.
+Команда собирает проект, прогоняет линтеры (checkstyle, spotless) и тесты (JUnit 5, Spring Boot Test, MockMvc, DataJpaTest). Готовый Executable JAR лежит в `build/libs/my-market-app-0.0.1-SNAPSHOT.jar`.
 
-Docker для этого не нужен: тесты работают на встроенной H2 в режиме `MODE=PostgreSQL`, и схему для них создаёт тот же changelog, что и основное приложение. То есть `./gradlew build` проверяет проект на машине без Docker вообще.
+Большая часть тестов работает на встроенной H2 в режиме `MODE=PostgreSQL`, и схему для них создаёт тот же changelog, что и основное приложение. Но `ItemRepositoryPostgreSqlTest` поднимает настоящий PostgreSQL в контейнере через Testcontainers, поэтому **для `./gradlew build` Docker необходим**. Тест запускает `postgres:17.5` — тот же образ, что и в `docker-compose.yml`, — и применяет тот же changelog, что гарантирует переносимость миграций на боевую СУБД.
+
+Без Docker пройдут только тесты на H2:
+
+```bash
+./gradlew test --tests '*RepositoryTest' --tests '*ServiceTest' --tests '*ControllerTest' --tests '*MvcFlowIntegrationTest'
+```
 
 ## Как создаётся база данных
 
@@ -44,7 +50,17 @@ POSTGRES_PASSWORD: market
 
 **Шаг 2 — таблицы, индексы и данные — создаёт Liquibase при старте приложения.**
 
-Схему приложения описывает единственный файл [`src/main/resources/db/changelog/db.changelog-master.yaml`](src/main/resources/db/changelog/db.changelog-master.yaml). При старте приложение сверяет содержимое changelog с таблицей `DATABASECHANGELOG` и выполняет недостающие changeset'ы.
+Схему приложения описывает набор файлов миграций: корневой
+[`db.changelog-master.yaml`](src/main/resources/db/changelog/db.changelog-master.yaml) подключает
+остальные через `include` — по одному файлу на домен
+(`items`, `cart_item`, `orders`, `order_item`, внешние ключи, seed-данные, индексы) в каталоге
+`db/changelog/changes/`. При старте приложение сверяет содержимое changelog с таблицей `DATABASECHANGELOG` и выполняет недостающие changeset'ы.
+
+У каждого changeset объявлены `preConditions` и `rollback`. `preConditions` по умолчанию работают
+в режиме `HALT`: если объект, который changeset собирается создать, уже существует, changeset
+не выполняется, а приложение падает при старте с `PreconditionFailedException`. Режим
+`MARK_RAN` намеренно не используется — он отметил бы изменение выполненным, хотя оно не
+выполнялось, и база прошла бы миграции, не будучи ими создана.
 
 Итого после `docker compose up -d --build` ревьюер получает готовую к работе витрину: базу, пользователя, все таблицы, внешние ключи, индекс и 4 товара из seed-данных. Ни одной промежуточной команды не требуется.
 
@@ -52,9 +68,11 @@ POSTGRES_PASSWORD: market
 
 Отдельно стоит отметить, чем это отличается от прежней схемы `hbm2ddl=create`: тот режим пересоздавал таблицы при каждом старте и уничтожал накопленные данные, не оставляя никакой истории. Liquibase этого не делает.
 
-### Если возникает ошибка `relation "..." already exists`
+### Если приложение падает при старте с `PreconditionFailedException`
 
-Она означает, что база была создана **не** через Liquibase (например, ранее через `hbm2ddl=create`), поэтому таблицы в ней уже есть, а таблицы `DATABASECHANGELOG` — нет. Liquibase видит пустую историю и пытается выполнить создание таблиц заново.
+Это означает, что база была создана **не** через Liquibase (например, ранее через `hbm2ddl=create`): таблицы в ней уже есть, а таблица `DATABASECHANGELOG` — нет. Liquibase видит пустую историю, и `preConditions` первого changeset'а обнаруживают, что таблица `items` уже создана.
+
+Ошибка специально не скрывается и не помечается как «выполнено»: приложение останавливается, чтобы расхождение схемы пришлось разобрать явно. До появления `preConditions` на этом же месте падало `ERROR: relation "items" already exists` — теперь падение происходит раньше и с более понятной причиной.
 
 Самый быстрый способ для учебного проекта — начать с чистой базы (данные будут потеряны):
 
