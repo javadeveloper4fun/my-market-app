@@ -114,4 +114,29 @@ class OrderServiceTest {
         Order saved = orderRepository.findWithItemsById(orderId).orElseThrow();
         assertThat(saved.getItems().get(0).getPrice()).isEqualByComparingTo(new java.math.BigDecimal("1500"));
     }
+
+    /**
+     * Фиксирует границу округления цены при оформлении заказа.
+     *
+     * <p>Снимок цены в заказе хранится с точностью до копеек, а {@code OrderDto} отдаёт
+     * её как {@code long} и отбрасывает дробную часть. Тест проверяет обе стороны:
+     * в базе остаются все копейки, а витрина заказа показывает целые рубли. Если поменять
+     * представление цены на {@code BigDecimal}, упадёт именно этот тест — то есть решение
+     * о целых рублях придётся принимать осознанно, а не случайно.
+     */
+    @Test
+    void keepsCentsInSnapshotButTruncatesThemInDto() {
+        Item item = itemRepository.save(
+                new Item("Тестовый товар", "Описание", "img.jpg", new java.math.BigDecimal("999.99")));
+        cartItemRepository.save(new CartItem(item, 2));
+
+        long orderId = orderService.buy();
+
+        Order saved = orderRepository.findWithItemsById(orderId).orElseThrow();
+        assertThat(saved.getItems().get(0).getPrice()).isEqualByComparingTo(new java.math.BigDecimal("999.99"));
+
+        OrderDto dto = orderService.getOrder(orderId);
+        assertThat(dto.totalSum()).isEqualTo(999L * 2);
+        assertThat(dto.items().getFirst().price()).isEqualTo(999L);
+    }
 }

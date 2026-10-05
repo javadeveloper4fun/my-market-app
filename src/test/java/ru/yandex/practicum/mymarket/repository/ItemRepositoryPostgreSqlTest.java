@@ -3,7 +3,9 @@ package ru.yandex.practicum.mymarket.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
+import java.sql.SQLException;
 import java.util.List;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -35,6 +37,26 @@ class ItemRepositoryPostgreSqlTest {
 
     @Autowired
     private CartItemRepository cartItemRepository;
+
+    @Autowired
+    private DataSource dataSource;
+
+    /**
+     * Проверяет, что тесты идут на PostgreSQL, а не на H2.
+     *
+     * <p>Без этой проверки класс молча потерял бы смысл: {@code @DataJpaTest} подставляет
+     * встроенную базу, если не нашёл источник подключения, и остальные тесты прошли бы
+     * на H2, ничего об этом не сообщив. Имя продукта берётся у драйвера, поэтому сменить
+     * СУБД, не меняя остальные настройки, здесь нельзя.
+     *
+     * @throws SQLException если не удалось получить соединение
+     */
+    @Test
+    void runsOnRealPostgreSqlNotOnH2() throws SQLException {
+        try (var connection = dataSource.getConnection()) {
+            assertThat(connection.getMetaData().getDatabaseProductName()).isEqualTo("PostgreSQL");
+        }
+    }
 
     /**
      * Проверяет, что цена сохраняется с точностью до копеек.

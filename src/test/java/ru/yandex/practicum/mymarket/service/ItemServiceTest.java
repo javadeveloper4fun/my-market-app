@@ -141,4 +141,24 @@ class ItemServiceTest {
         assertThat(dto.count()).isEqualTo(3);
         assertThat(dto.price()).isEqualTo(1500L);
     }
+
+    /**
+     * Фиксирует округление цены до целых рублей при выводе на витрину.
+     *
+     * <p>Цена хранится как {@code NUMERIC(10,2)} и копейки в ней не теряются, но DTO
+     * отдаёт {@code long}, отбрасывая дробную часть. Тест существует, чтобы решение о
+     * целых рублях было зафиксировано проверкой: если поменять представление цены,
+     * упадёт именно он.
+     */
+    @Test
+    void getItemTruncatesFractionalPriceToWholeRubles() {
+        Item item = itemRepository.save(
+                new Item("Тестовый товар", "Описание", "img.jpg", new java.math.BigDecimal("999.99")));
+
+        ItemDto dto = itemService.getItem(item.getId());
+
+        assertThat(dto.price()).isEqualTo(999L);
+        assertThat(itemRepository.findById(item.getId()).orElseThrow().getPrice())
+                .isEqualByComparingTo("999.99");
+    }
 }
