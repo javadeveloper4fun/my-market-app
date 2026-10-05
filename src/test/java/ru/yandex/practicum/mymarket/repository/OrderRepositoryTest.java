@@ -111,16 +111,4 @@ class OrderRepositoryTest {
         order.addItem(new OrderItem(2L, "Плед", new BigDecimal("1600.00"), 1));
         return order;
     }
-
-    /**
-     * Создаёт заказ с одной строкой.
-     *
-     * @param title название товара в строке заказа
-     * @return новый заказ
-     */
-    private Order orderWith(String title) {
-        Order order = new Order();
-        order.addItem(new OrderItem(1L, title, new BigDecimal("2500.00"), 1));
-        return order;
-    }
 }
