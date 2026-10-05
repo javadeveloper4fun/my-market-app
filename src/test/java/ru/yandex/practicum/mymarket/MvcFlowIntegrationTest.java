@@ -1,5 +1,6 @@
 package ru.yandex.practicum.mymarket;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;
@@ -17,12 +18,21 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 import ru.yandex.practicum.mymarket.model.Item;
+import ru.yandex.practicum.mymarket.repository.CartItemRepository;
 import ru.yandex.practicum.mymarket.repository.ItemRepository;
+import ru.yandex.practicum.mymarket.repository.OrderRepository;
 
 /**
  * Интеграционные MockMvc-тесты: сквозной сценарий
  * «витрина → корзина → оформление заказа → список заказов»
  * на полном Spring-контексте со встроенной H2 (профиль test).
+ *
+ * <p>Класс помечен {@link Transactional}: {@code @SpringBootTest} сам по себе
+ * не откатывает изменения, поэтому без этой аннотации данные, созданные
+ * одним тестом, оставались бы в общей базе {@code mem:market} и влияли бы
+ * на следующие тесты. С откатом каждый тест начинает с одинакового состояния,
+ * а проверка {@code startsWithEmptyDatabaseBecauseEachTestRollsBack}
+ * фиксирует это требование.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -35,6 +45,29 @@ class MvcFlowIntegrationTest {
 
     @Autowired
     private ItemRepository itemRepository;
+
+    @Autowired
+    private CartItemRepository cartItemRepository;
+
+    @Autowired
+    private OrderRepository orderRepository;
+
+    /**
+     * Проверяет, что тесты изолированы друг от друга.
+     *
+     * <p>База {@code mem:market} общая для всех тестовых классов профиля
+     * {@code test} и живёт до конца JVM, поэтому данные, оставленные одним
+     * тестом, иначе влияли бы на остальные. Ожидание пустых таблиц в начале
+     * теста означает, что предыдущий тест был откатан: проверка не зависит
+     * от порядка выполнения, потому что при откате состояние одинаково
+     * всегда.
+     */
+    @Test
+    void startsWithEmptyDatabaseBecauseEachTestRollsBack() {
+        assertThat(itemRepository.count()).isZero();
+        assertThat(cartItemRepository.count()).isZero();
+        assertThat(orderRepository.count()).isZero();
+    }
 
     /**
      * Проверяет полный путь пользователя: добавление в корзину со страницы
