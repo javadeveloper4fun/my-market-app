@@ -64,7 +64,7 @@ public class OrderService {
     public long buy() {
         List<CartItem> cartItems = cartItemRepository.findAllWithItem();
         if (cartItems.isEmpty()) {
-            throw new IllegalStateException("Cart is empty");
+            throw new EmptyCartException("Cart is empty");
         }
 
         Order order = new Order();

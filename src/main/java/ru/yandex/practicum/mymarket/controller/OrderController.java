@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import ru.yandex.practicum.mymarket.dto.OrderDto;
+import ru.yandex.practicum.mymarket.service.EmptyCartException;
 import ru.yandex.practicum.mymarket.service.OrderService;
 
 @Controller
@@ -57,6 +58,10 @@ public class OrderController {
      * исключения в контроллере происходит уже после её закрытия. Само по себе
      * перехваченное исключение откат уже не отменило бы.
      *
+     * <p>Ловится только {@link EmptyCartException}: пустая корзина — ожидаемое состояние,
+     * из которого делают редирект. Любая другая ошибка пробрасывается в
+     * {@code GlobalExceptionHandler}, а не растворяется в редиректе.
+     *
      * @return редирект на страницу нового заказа или в корзину (если она пуста)
      */
     @PostMapping("/buy")
@@ -64,7 +69,7 @@ public class OrderController {
         try {
             long orderId = orderService.buy();
             return "redirect:/orders/" + orderId + "?newOrder=true";
-        } catch (IllegalStateException e) {
+        } catch (EmptyCartException e) {
             LOG.warn("Попытка оформления заказа с пустой корзиной: {}", e.getMessage());
             return "redirect:/cart/items";
         }

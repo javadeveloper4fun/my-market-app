@@ -99,7 +99,7 @@ class OrderServiceTest {
     @Test
     void buyThrowsWhenCartEmpty() {
         assertThatThrownBy(() -> orderService.buy())
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(EmptyCartException.class)
                 .hasMessageContaining("Cart is empty");
     }
 

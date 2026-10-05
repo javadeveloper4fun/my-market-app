@@ -1,5 +1,7 @@
 package ru.yandex.practicum.mymarket.controller;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ControllerAdvice;
@@ -10,9 +12,15 @@ import ru.yandex.practicum.mymarket.service.OrderNotFoundException;
 
 /**
  * Глобальная обработка исключений контроллеров.
+ *
+ * <p>Каждый обработчик логирует исключение: без записи в лог ошибка, отвергнутая
+ * запросом, не оставляла бы следов, и причину пришлось бы искать по косвенным
+ * признакам — по неверному HTTP-статусу или по жалобе пользователя.
  */
 @ControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger LOG = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     /**
      * Превращает исключение «товар не найден» в ответ со статусом 404.
@@ -22,6 +30,7 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(ItemNotFoundException.class)
     public ResponseEntity<Void> handleItemNotFound(ItemNotFoundException e) {
+        LOG.debug("Запрошен несуществующий товар: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
     }
 
@@ -33,6 +42,7 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(OrderNotFoundException.class)
     public ResponseEntity<Void> handleOrderNotFound(OrderNotFoundException e) {
+        LOG.debug("Запрошен несуществующий заказ: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
     }
 
@@ -51,6 +61,7 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<Void> handleTypeMismatch(MethodArgumentTypeMismatchException e) {
+        LOG.warn("Не удалось преобразовать параметр запроса '{}': {}", e.getName(), e.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
     }
 
@@ -66,6 +77,7 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Void> handleIllegalArgument(IllegalArgumentException e) {
+        LOG.warn("Некорректный аргумент запроса: {}", e.getMessage(), e);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
     }
 }

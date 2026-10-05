@@ -1,5 +1,6 @@
 package ru.yandex.practicum.mymarket.controller;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -17,6 +18,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.OrderDto;
+import ru.yandex.practicum.mymarket.service.EmptyCartException;
 import ru.yandex.practicum.mymarket.service.OrderNotFoundException;
 import ru.yandex.practicum.mymarket.service.OrderService;
 
@@ -100,9 +102,29 @@ class OrderControllerTest {
      */
     @Test
     void buyRedirectsToCartWhenCartIsEmpty() throws Exception {
-        when(orderService.buy()).thenThrow(new IllegalStateException("Cart is empty"));
+        when(orderService.buy()).thenThrow(new EmptyCartException("Cart is empty"));
 
         mockMvc.perform(post("/buy")).andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/cart/items"));
+    }
+
+    /**
+     * Проверяет, что ошибка, не являющаяся пустой корзиной, доходит до пользователя.
+     *
+     * <p>Контроллер ловит только {@code EmptyCartException}. Если бы он ловил общий
+     * {@code IllegalStateException}, эта ошибка тоже дала бы редирект в корзину и
+     * настоящая причина сбоя была бы скрыта от пользователя.
+     *
+     * <p>Проверяется само исключение, а не HTTP-статус: необработанное исключение в
+     * MockMvc пробрасывается как вложенное в {@code ServletException}, а не
+     * преобразуется в ответ — в реальном запросе его поймает DispatcherServlet.
+     */
+    @Test
+    void buyDoesNotRedirectOnUnexpectedIllegalState() {
+        when(orderService.buy()).thenThrow(new IllegalStateException("connection lost"));
+
+        assertThatThrownBy(() -> mockMvc.perform(post("/buy")))
+                .hasRootCauseInstanceOf(IllegalStateException.class)
+                .hasRootCauseMessage("connection lost");
     }
 
     /**
