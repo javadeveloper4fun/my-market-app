@@ -49,6 +49,21 @@ dependencies {
 
     testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
+
+    // Спринт 5, Тема 5, Урок 2 — проверка схемы и запросов на настоящей СУБД.
+    // H2 в MODE=PostgreSQL отличается от PostgreSQL, поэтому для части тестов
+    // поднимается реальный сервер в контейнере.
+    // spring-boot-testcontainers — аннотация @ServiceConnection: она берёт url,
+    // имя пользователя и пароль из контейнера и подставляет их в DataSource,
+    // поэтому @DynamicPropertySource писать не нужно.
+    // testcontainers-postgresql — контейнер с PostgreSQL,
+    // testcontainers-junit-jupiter — интеграция контейнеров с JUnit.
+    // Имена модулей с префиксом testcontainers- относятся к Testcontainers 2.x;
+    // в 1.x модули назывались postgresql и junit-jupiter. Версию всех трёх
+    // задаёт testcontainers-bom, подключённый через spring-boot-dependencies.
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:testcontainers-postgresql'
+    testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 

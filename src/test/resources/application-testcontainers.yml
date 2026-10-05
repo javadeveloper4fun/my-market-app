@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: my-market-app
+
+  # Параметры подключения намеренно не задаются: их подставляет
+  # @ServiceConnection из PostgreSqlTestContainerConfiguration по данным
+  # контейнера. Значения из application.yml (localhost:5439) при этом
+  # не мешают: зарегистрированный ConnectionDetailsBean имеет приоритет
+  # над свойствами spring.datasource.
+  #
+  # Профиль testcontainers вместо test отличается только источником БД:
+  # настройки Liquibase и Hibernate ниже совпадают с тестовым профилем,
+  # чтобы различие поведения объяснялось самой СУБД, а не конфигурацией.
+
+  liquibase:
+    # Тот же changelog, что и в остальных окружениях: это и есть главная
+    # причина запускать проверки на настоящей PostgreSQL — миграции
+    # применяются тем же кодом, что и в docker-compose.
+    # context: test исключает changeset'ы с другими контекстами, поэтому
+    # стартовое наполнение витрины (context: seed) не выполняется
+    # и каждый тест начинает с пустого каталога.
+    contexts: test
+
+  jpa:
+    properties:
+      hibernate:
+        # Схему создаёт Liquibase, поэтому Hibernate только сверяет её
+        # с сущностями. Расхождение обнаружится на старте контекста теста.
+        hbm2ddl:
+          auto: validate

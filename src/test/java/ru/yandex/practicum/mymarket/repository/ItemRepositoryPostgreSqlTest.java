@@ -1,0 +1,75 @@
+package ru.yandex.practicum.mymarket.repository;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.math.BigDecimal;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.test.context.ActiveProfiles;
+import ru.yandex.practicum.mymarket.PostgreSqlTestContainerConfiguration;
+import ru.yandex.practicum.mymarket.model.Item;
+
+/**
+ * Проверка слоя доступа к данным на настоящем PostgreSQL (Спринт 5, Тема 5, Урок 2).
+ *
+ * <p>Основные тесты репозиториев работают на встроенной H2 ради скорости.
+ * Здесь тот же код проверяется на боевой СУБД: контейнер поднимает PostgreSQL,
+ * Liquibase применяет тот же changelog, что и в {@code docker-compose.yml},
+ * а Hibernate сверяет полученную схему с сущностями. Тест падает, если
+ * changelog перестанет соответствовать {@code @Entity} или если PostgreSQL
+ * ведёт себя иначе, чем H2 в режиме {@code MODE=PostgreSQL}.
+ *
+ * <p>Требует работающего Docker: без него тест не запускается.
+ */
+@DataJpaTest
+@ActiveProfiles("testcontainers")
+@Import(PostgreSqlTestContainerConfiguration.class)
+class ItemRepositoryPostgreSqlTest {
+
+    @Autowired
+    private ItemRepository itemRepository;
+
+    /**
+     * Проверяет, что цена сохраняется с точностью до копеек.
+     *
+     * <p>Колонка объявлена как {@code NUMERIC(10,2)}. Для двоичного типа
+     * ({@code FLOAT}, {@code DOUBLE PRECISION}) такая сумма дала бы
+     * погрешность, и сравнение завершилось бы ошибкой.
+     */
+    @Test
+    void keepsPriceExact() {
+        Item jacket = itemRepository.saveAndFlush(
+                new Item("Куртка", "Тёплая куртка", "images/jacket.jpg", new BigDecimal("4500.00")));
+        itemRepository.saveAndFlush(new Item("Шапка", "Тёплая шапка", "images/boots.jpg", new BigDecimal("999.99")));
+
+        BigDecimal total =
+                itemRepository.findAll().stream().map(Item::getPrice).reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        assertThat(jacket.getPrice()).isEqualByComparingTo("4500.00");
+        assertThat(jacket.getPrice().scale()).isEqualTo(2);
+        assertThat(total).isEqualByComparingTo("5499.99");
+        assertThat(total.scale()).isEqualTo(2);
+    }
+
+    /**
+     * Проверяет поиск по названию без учёта регистра на реальной СУБД.
+     *
+     * <p>Запрос из {@code ItemRepository.searchByText} использует
+     * {@code lower(...)} с обеих сторон, поэтому регистр не должен влиять
+     * на результат.
+     */
+    @Test
+    void searchesIgnoringCase() {
+        itemRepository.saveAndFlush(
+                new Item("Куртка", "Тёплая куртка", "images/jacket.jpg", new BigDecimal("4500.00")));
+        itemRepository.saveAndFlush(
+                new Item("Рюкзак", "Стальной рюкзак", "images/backpack.jpg", new BigDecimal("3200.00")));
+
+        var found = itemRepository.searchByText("кУрТкА", org.springframework.data.domain.Pageable.unpaged());
+
+        assertThat(found.getContent()).hasSize(1);
+        assertThat(found.getContent().getFirst().getTitle()).isEqualTo("Куртка");
+    }
+}
