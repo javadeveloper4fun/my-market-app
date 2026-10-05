@@ -1,10 +1,12 @@
 package ru.yandex.practicum.mymarket.controller;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -57,6 +59,10 @@ class ItemsControllerTest {
     /**
      * Проверяет, что GET /items передаёт параметры запроса в сервис без изменений.
      *
+     * <p>Помимо модели проверяется и сам отрисованный HTML: наличие названия товара
+     * в ответе ловит опечатки в шаблоне, которые не дают исключения и молча
+     * приводят к пустой витрине.
+     *
      * @throws Exception при ошибке выполнения запроса
      */
     @Test
@@ -70,7 +76,8 @@ class ItemsControllerTest {
                 .andExpect(view().name("items"))
                 .andExpect(model().attribute("items", page.rows()))
                 .andExpect(model().attribute("search", "куртка"))
-                .andExpect(model().attribute("sort", "ALPHA"));
+                .andExpect(model().attribute("sort", "ALPHA"))
+                .andExpect(content().string(containsString("Куртка")));
     }
 
     /**
@@ -97,6 +104,10 @@ class ItemsControllerTest {
     /**
      * Проверяет, что GET /items/{id} рендерит карточку товара.
      *
+     * <p>Название товара проверяется в теле ответа, а не только в модели:
+     * опечатка в выражении шаблона иначе оставила бы страницу пустой,
+     * и тест остался бы зелёным.
+     *
      * @throws Exception при ошибке выполнения запроса
      */
     @Test
@@ -107,7 +118,8 @@ class ItemsControllerTest {
         mockMvc.perform(get("/items/1"))
                 .andExpect(status().isOk())
                 .andExpect(view().name("item"))
-                .andExpect(model().attributeExists("item"));
+                .andExpect(model().attributeExists("item"))
+                .andExpect(content().string(containsString("Куртка")));
     }
 
     /**
