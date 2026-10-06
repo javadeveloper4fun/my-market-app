@@ -13,9 +13,12 @@ import ru.yandex.practicum.mymarket.model.Item;
 public interface ItemRepository extends JpaRepository<Item, Long> {
 
     /**
-     * Ищет товары, у которых в названии или описании встречается переданный текст
-     * (нечувствительно к регистру). Для получения всех товаров без фильтра
-     * используется унаследованный {@code findAll(Pageable)}.
+     * Ищет товары, у которых в названии или описании (регистронезависимо) встречается
+     * переданный текст: {@code lower(title) like lower(concat('%', :text, '%'))}
+     * или {@code lower(description) like lower(concat('%', :text, '%'))}.
+     * Экранирование символов `%` и `_` в тексте осуществляется вызывающей стороной
+     * (метод {@link ItemService#escapeLike}) перед вызовом репозитория;
+     * в JPQL объявлен {@code escape '\\'}, который интерпретирует '\\' как литерал.
      *
      * @param text     искомая подстрока (не должна быть {@code null})
      * @param pageable настройки страницы и сортировки

@@ -4,9 +4,12 @@ package ru.yandex.practicum.mymarket.service;
  * Корзина пуста, оформить заказ не из чего.
  *
  * <p>Выделена в отдельный тип, чтобы {@code OrderController} отличал это ожидаемое
- * состояние от любой другой {@code IllegalStateException}. Если бы он ловил общий тип,
- * то любая непредвиденная ошибка внутри {@code buy()} тоже привела бы к редиректу
- * в корзину и была бы не видна в логах.
+ * состояние от любой другой {@code RuntimeException}. {@code EmptyCartException}
+ * отделен от {@code IllegalStateException}, поэтому настоящая ошибка не растворяется
+ * в редиректе: {@code OrderController.buy()} ловит только {@code EmptyCartException},
+ * а любая непредвиденная ошибка обрабатывается {@code GlobalExceptionHandler}.
+ * Поскольку исключение логируется в {@code GlobalExceptionHandler}, информация о
+ * ней всегда сохраняется в логах.
  */
 public class EmptyCartException extends RuntimeException {
 

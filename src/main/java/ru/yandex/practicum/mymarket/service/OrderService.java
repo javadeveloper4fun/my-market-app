@@ -30,9 +30,10 @@ public class OrderService {
     /**
      * Возвращает все заказы.
      *
-     * <p>Коллекция позиций ленивая, поэтому загружается в репозитории через
-     * {@code left join fetch} — иначе обращение к {@code order.getItems()} даст
-     * {@code LazyInitializationException}.
+     * <p>Загрузка коллекции позиций производится через {@code left join fetch} в
+     * репозитории {@code findAllWithItems}, чтобы избежать {@code LazyInitializationException}
+     * при обращении к {@code order.getItems()} вне транзакции (отключен {@code
+     * spring.jpa.open-in-view}</p>.
      *
      * @return список заказов
      */
@@ -52,8 +53,9 @@ public class OrderService {
      * Создание заказа, его позиций и очистка корзины должны выполниться
      * одной транзакцией: иначе возможна покупка без заказа или товар в корзине после покупки.
      *
-     * <p>Очистка корзины одним {@code deleteAllInBatch()} — батчевая операция:
-     * один DELETE ... WHERE id IN (...) вместо удаления позиций по одной.
+     * <p>Очистка корзины одном {@code deleteAllInBatch()} — батчевая операция:
+     * {@code DELETE FROM cart_item} (все строки), {@code deleteAllInBatch(Iterable)} —
+     * `WHERE id IN (...)`.
      *
      * @return идентификатор созданного заказа
      */

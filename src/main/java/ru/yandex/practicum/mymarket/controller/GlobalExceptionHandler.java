@@ -48,13 +48,12 @@ public class GlobalExceptionHandler {
 
     /**
      * Возвращает 400 при ошибке конвертации параметра запроса (например,
-     * невалидное значение enum Action). Обработчик обязателен, так как
-     * {@link MethodArgumentTypeMismatchException} не является подтипом
-     * {@link IllegalArgumentException}, но его первопричина (отказ конвертации
-     * в тип параметра) — тоже IllegalArgumentException («No enum constant ...»):
-     * резолвер {@code @ExceptionHandler} обходит цепочку {@link Throwable#getCause()},
-     * и без этого метода невалидный action попал бы в {@link #handleIllegalArgument}
-     * и вернул бы 404 вместо 400.
+     * невалидное значение enum Action). {@link MethodArgumentTypeMismatchException}
+     * наследуется от {@link TypeMismatchException} и иерархии {@link RuntimeException}.
+     * Его первопричина (отказ конвертации в тип параметра) — {@link IllegalArgumentException}
+     * («No enum constant ...»): резолвер {@code @ExceptionHandler} обходит
+     * цепочку {@link Throwable#getCause()}, что позволяет корректно
+     * отображать ошибку даже при наличии cause.
      *
      * @param e исключение ошибки конвертации
      * @return ответ со статусом 400
