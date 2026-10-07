@@ -32,12 +32,16 @@
                             <span class="badge text-bg-success justify-content-end" th:text="${item.price()}+' руб.'"></span>
                         </h5>
                         <p class="card-text" th:text="${item.description()}"></p>
-                        <form th:action="@{${'/items/'+item.id()}}" method="post">
+                        <form method="post">
                             <div class="hstack gap-3">
-                                <button type="submit" class="btn btn-outline-secondary" name="action" value="MINUS">-</button>
+                                <button type="submit" class="btn btn-outline-secondary"
+                                        th:formaction="@{${'/items/'+item.id()}(action='MINUS')}">-</button>
                                 <span th:text="${item.count()}"></span>
-                                <button type="submit" class="btn btn-outline-secondary" name="action" value="PLUS">+</button>
-                                <button type="submit" class="btn btn-warning ms-auto bi bi-cart4" name="action" value="PLUS" th:if="${item.count()==0}"></button>
+                                <button type="submit" class="btn btn-outline-secondary"
+                                        th:formaction="@{${'/items/'+item.id()}(action='PLUS')}">+</button>
+                                <button type="submit" class="btn btn-warning ms-auto bi bi-cart4"
+                                        th:formaction="@{${'/items/'+item.id()}(action='PLUS')}"
+                                        th:if="${item.count()==0}"></button>
                             </div>
                         </form>
                     </div>

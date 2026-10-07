@@ -1,24 +1,33 @@
 package ru.yandex.practicum.mymarket.model;
 
-import jakarta.persistence.CascadeType;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.OneToMany;
-import jakarta.persistence.Table;
-import java.util.ArrayList;
-import java.util.List;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.relational.core.mapping.Table;
 
 /**
- * Заказ покупателя. Содержит строки заказа (зафиксированные товары с ценой на момент покупки).
+ * Заказ покупателя.
+ *
+ * <p>Строка таблицы {@code orders} без коллекции позиций. Имя таблицы указано
+ * явно: по умолчанию из класса {@code Order} получилось бы {@code order}, а в
+ * схеме — {@code orders}.
+ *
+ * <p>Позиции здесь намеренно не хранятся. Первой версией была связь
+ * {@code @MappedCollection}, и она выглядела естественно — такой приём
+ * сохраняет агрегат целиком в Spring Data JDBC. В R2DBC так не работает:
+ * конвертер отвечает {@code Nested entities are not supported} и отказывается
+ * писать вложенные сущности. Поэтому заказ и его позиции сохраняются
+ * отдельными вызовами, а связь задаётся полем {@code orderId} в
+ * {@link OrderItem}, которое проставляет {@code OrderService.buy()}.
+ *
+ * <p>Такой сценарий неудобен: связь держится на дисциплине вызывающего кода, а
+ * не проверяется преобразователем. Но альтернативы у R2DBC нет, и честнее
+ * отметить это в коде, чем оставить конструкцию, которая выглядит рабочей и
+ * падает на первой же записи.
  */
-@Entity
-@Table(name = "orders")
+@Table("orders")
 @NoArgsConstructor
 @Getter
 @Setter
@@ -26,26 +35,5 @@ import lombok.Setter;
 public class Order {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    /**
-     * Строки заказа. Связь — «обратная» сторона ({@code mappedBy}), поэтому колонка
-     * {@code order_id} создаётся в {@code order_item} на стороне {@code OrderItem}.
-     *
-     * <p>{@code CascadeType.ALL} позволяет сохранить заказ со строками одним
-     * {@code save()}, {@code orphanRemoval} удаляет строки вместе с заказом.
-     */
-    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<OrderItem> items = new ArrayList<>();
-
-    /**
-     * Добавляет строку заказа и связывает её с этим заказом.
-     *
-     * @param orderItem строка заказа
-     */
-    public void addItem(OrderItem orderItem) {
-        orderItem.setOrder(this);
-        items.add(orderItem);
-    }
 }

@@ -1,33 +1,131 @@
 package ru.yandex.practicum.mymarket.repository;
 
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.r2dbc.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.data.repository.reactive.ReactiveCrudRepository;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.model.Item;
 
 /**
- * Репозиторий товаров витрины.
+ * Хранилище товаров витрины.
+ *
+ * <p>Запросы написаны на SQL, а не на JPQL: R2DBC работает напрямую с БД и
+ * ничего не переводит.
+ *
+ * <p>Отдельного метода с {@code Pageable} здесь нет намеренно.
+ * {@code ReactiveSortingRepository} умеет только {@code findAll(Sort)}, а
+ * {@code @Query} страницы не подставляет: {@code LIMIT} и {@code OFFSET}
+ * пришлось бы указывать в тексте. Поэтому каждая выборка принимает границы
+ * числами, и шесть вариантов — два состояния поиска на три сортировки —
+ * перечислены явно.
+ *
+ * <p>Сортировка задана фиксированными методами, а не параметром: иначе порядок
+ * пришлось бы собирать конкатенацией строки, и в запрос попал бы текст,
+ * присланный пользователем.
+ *
+ * <p>Символ экранирования записан как {@code ESCAPE '\\\\'} — с двумя
+ * обратными косыми. Это не опечатка и не избыточность. Запросы написаны
+ * текстовыми блоками, а в них обратная косая остаётся управляющим
+ * символом: написанная слитно {@code ESCAPE '\\'} превращается в
+ * {@code ESCAPE '''}, где символом экранирования оказывается одинарная
+ * кавычка. Ошибка молчаливая: экранирование {@code %} перестаёт работать,
+ * запрос возвращает пустой результат вместо ожидаемой находки, и ни
+ * одного исключения не возникает.
  */
-public interface ItemRepository extends JpaRepository<Item, Long> {
+public interface ItemRepository extends ReactiveCrudRepository<Item, Long> {
 
     /**
-     * Ищет товары, у которых в названии или описании (регистронезависимо) встречается
-     * переданный текст: {@code lower(title) like lower(concat('%', :text, '%'))}
-     * или {@code lower(description) like lower(concat('%', :text, '%'))}.
-     * Экранирование символов `%` и `_` в тексте осуществляется вызывающей стороной
-     * (метод {@link ItemService#escapeLike}) перед вызовом репозитория;
-     * в JPQL объявлен {@code escape '\\'}, который интерпретирует '\\' как литерал.
+     * Все товары без сортировки.
      *
-     * @param text     искомая подстрока (не должна быть {@code null})
-     * @param pageable настройки страницы и сортировки
-     * @return страница найденных товаров
+     * @param limit  максимум строк в выборке
+     * @param offset сколько строк пропустить
+     * @return поток товаров
+     */
+    @Query("SELECT * FROM items LIMIT :limit OFFSET :offset")
+    Flux<Item> findAllUnsorted(@Param("limit") long limit, @Param("offset") long offset);
+
+    /**
+     * Все товары по алфавиту.
+     *
+     * @param limit  максимум строк в выборке
+     * @param offset сколько строк пропустить
+     * @return поток товаров
+     */
+    @Query("SELECT * FROM items ORDER BY title LIMIT :limit OFFSET :offset")
+    Flux<Item> findAllByTitle(@Param("limit") long limit, @Param("offset") long offset);
+
+    /**
+     * Все товары по цене.
+     *
+     * @param limit  максимум строк в выборке
+     * @param offset сколько строк пропустить
+     * @return поток товаров
+     */
+    @Query("SELECT * FROM items ORDER BY price LIMIT :limit OFFSET :offset")
+    Flux<Item> findAllByPrice(@Param("limit") long limit, @Param("offset") long offset);
+
+    /**
+     * Ищет товары по названию или описанию, сортировка не применяется.
+     *
+     * @param text   искомая подстрока, не {@code null}
+     * @param limit  максимум строк в выборке
+     * @param offset сколько строк пропустить
+     * @return поток найденных товаров
      */
     @Query("""
-            select i from Item i
-            where lower(i.title) like lower(concat('%', :text, '%')) escape '\\'
-               or lower(i.description) like lower(concat('%', :text, '%')) escape '\\'
+            SELECT * FROM items
+            WHERE lower(title) LIKE lower(concat('%', :text, '%')) ESCAPE '\\'
+               OR lower(description) LIKE lower(concat('%', :text, '%')) ESCAPE '\\'
+            LIMIT :limit OFFSET :offset
             """)
-    Page<Item> searchByText(@Param("text") String text, Pageable pageable);
+    Flux<Item> searchUnsorted(@Param("text") String text, @Param("limit") long limit, @Param("offset") long offset);
+
+    /**
+     * Ищет товары по названию или описанию, сортировка по алфавиту.
+     *
+     * @param text   искомая подстрока, не {@code null}
+     * @param limit  максимум строк в выборке
+     * @param offset сколько строк пропустить
+     * @return поток найденных товаров
+     */
+    @Query("""
+            SELECT * FROM items
+            WHERE lower(title) LIKE lower(concat('%', :text, '%')) ESCAPE '\\'
+               OR lower(description) LIKE lower(concat('%', :text, '%')) ESCAPE '\\'
+            ORDER BY title
+            LIMIT :limit OFFSET :offset
+            """)
+    Flux<Item> searchByTitle(@Param("text") String text, @Param("limit") long limit, @Param("offset") long offset);
+
+    /**
+     * Ищет товары по названию или описанию, сортировка по цене.
+     *
+     * @param text   искомая подстрока, не {@code null}
+     * @param limit  максимум строк в выборке
+     * @param offset сколько строк пропустить
+     * @return поток найденных товаров
+     */
+    @Query("""
+            SELECT * FROM items
+            WHERE lower(title) LIKE lower(concat('%', :text, '%')) ESCAPE '\\'
+               OR lower(description) LIKE lower(concat('%', :text, '%')) ESCAPE '\\'
+            ORDER BY price
+            LIMIT :limit OFFSET :offset
+            """)
+    Flux<Item> searchByPrice(@Param("text") String text, @Param("limit") long limit, @Param("offset") long offset);
+
+    /**
+     * Считает товары, подходящие под строку поиска, без учёта сортировки:
+     * порядок строк на количество не влияет, поэтому одного запроса достаточно.
+     *
+     * @param text искомая подстрока, не {@code null}
+     * @return количество подходящих товаров
+     */
+    @Query("""
+            SELECT count(*) FROM items
+            WHERE lower(title) LIKE lower(concat('%', :text, '%')) ESCAPE '\\'
+               OR lower(description) LIKE lower(concat('%', :text, '%')) ESCAPE '\\'
+            """)
+    Mono<Long> countByText(@Param("text") String text);
 }

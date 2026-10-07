@@ -1,21 +1,16 @@
 package ru.yandex.practicum.mymarket.controller;
 
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.boot.webflux.test.autoconfigure.WebFluxTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.reactive.server.WebTestClient;
+import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.OrderDto;
 import ru.yandex.practicum.mymarket.service.EmptyCartException;
@@ -23,119 +18,132 @@ import ru.yandex.practicum.mymarket.service.OrderNotFoundException;
 import ru.yandex.practicum.mymarket.service.OrderService;
 
 /**
- * Слайсовые MockMvc-тесты контроллера заказов.
+ * Слайсовые тесты контроллера заказов на {@link WebTestClient}.
+ *
+ * <p>{@code @WebFluxTest} вместо {@code @WebMvcTest}: контроллер работает на
+ * WebFlux, и проверять его нужно через тот же стек, на котором он запущен.
+ *
+ * <p>Методы сервиса возвращают {@code Mono}, поэтому заглушки отдают
+ * {@code Mono.just(...)}. Заглушка, отдающая «голое» значение, осталась бы
+ * ожидаемым результатом, который ни разу не будет использован: {@code thenReturn}
+ * подпишется на {@code null} и упадёт уже в тесте.
  */
-@WebMvcTest(OrderController.class)
+@WebFluxTest(OrderController.class)
 class OrderControllerTest {
 
     @Autowired
-    private MockMvc mockMvc;
+    private WebTestClient client;
 
     @MockitoBean
     private OrderService orderService;
 
     /**
-     * Проверяет, что GET /orders рендерит список заказов.
-     *
-     * @throws Exception при ошибке выполнения запроса
+     * Проверяет, что GET /orders отдаёт страницу списка заказов.
      */
     @Test
-    void getOrdersRendersOrdersView() throws Exception {
+    void getOrdersRendersOrdersView() {
         OrderDto order = new OrderDto(1L, List.of(), 7000L);
-        when(orderService.getOrders()).thenReturn(List.of(order));
+        when(orderService.getOrders()).thenReturn(Mono.just(List.of(order)));
 
-        mockMvc.perform(get("/orders"))
-                .andExpect(status().isOk())
-                .andExpect(view().name("orders"))
-                .andExpect(model().attributeExists("orders"));
+        client.get()
+                .uri("/orders")
+                .exchange()
+                .expectStatus()
+                .isOk()
+                .expectBody(String.class)
+                .value(html -> assertThat(html).contains("Заказ"));
     }
 
     /**
-     * Проверяет, что GET /orders/{id} рендерит заказ с флагом newOrder=true.
-     *
-     * @throws Exception при ошибке выполнения запроса
+     * Проверяет, что GET /orders/{id} отдаёт страницу заказа.
      */
     @Test
-    void getOrderRendersOrderViewWithNewOrderFlag() throws Exception {
+    void getOrderRendersOrderViewWithNewOrderFlag() {
         ItemDto item = new ItemDto(1L, "Куртка", "", "", 1500L, 2);
         OrderDto order = new OrderDto(1L, List.of(item), 3000L);
-        when(orderService.getOrder(eq(1L))).thenReturn(order);
+        when(orderService.getOrder(eq(1L))).thenReturn(Mono.just(order));
 
-        mockMvc.perform(get("/orders/1").param("newOrder", "true"))
-                .andExpect(status().isOk())
-                .andExpect(view().name("order"))
-                .andExpect(model().attributeExists("order"))
-                .andExpect(model().attribute("newOrder", true));
+        client.get()
+                .uri("/orders/1?newOrder=true")
+                .exchange()
+                .expectStatus()
+                .isOk()
+                .expectBody(String.class)
+                .value(html -> assertThat(html).contains("Куртка"));
     }
 
     /**
-     * Проверяет, что по умолчанию флаг newOrder равен false.
-     *
-     * @throws Exception при ошибке выполнения запроса
+     * Проверяет, что по умолчанию флаг newOrder равен false: без него страница
+     * заказа отображается как обычная, а не как только что оформленная.
      */
     @Test
-    void getOrderDefaultsNewOrderToFalse() throws Exception {
+    void getOrderDefaultsNewOrderToFalse() {
         OrderDto order = new OrderDto(1L, List.of(), 0L);
-        when(orderService.getOrder(eq(1L))).thenReturn(order);
+        when(orderService.getOrder(eq(1L))).thenReturn(Mono.just(order));
 
-        mockMvc.perform(get("/orders/1")).andExpect(status().isOk()).andExpect(model().attribute("newOrder", false));
+        client.get()
+                .uri("/orders/1")
+                .exchange()
+                .expectStatus()
+                .isOk()
+                .expectBody(String.class)
+                .value(html -> assertThat(html).doesNotContain("Заказ оформлен"));
     }
 
     /**
-     * Проверяет, что POST /buy редиректит на страницу нового заказа.
-     *
-     * @throws Exception при ошибке выполнения запроса
+     * Проверяет, что POST /buy перенаправляет на страницу нового заказа.
      */
     @Test
-    void buyRedirectsToNewOrder() throws Exception {
-        when(orderService.buy()).thenReturn(42L);
+    void buyRedirectsToNewOrder() {
+        when(orderService.buy()).thenReturn(Mono.just(42L));
 
-        mockMvc.perform(post("/buy"))
-                .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrl("/orders/42?newOrder=true"));
+        client.post()
+                .uri("/buy")
+                .exchange()
+                .expectStatus()
+                .is3xxRedirection()
+                .expectHeader()
+                .location("/orders/42?newOrder=true");
     }
 
     /**
-     * Проверяет, что POST /buy при пустой корзине редиректит в корзину.
-     *
-     * @throws Exception при ошибке выполнения запроса
+     * Проверяет, что POST /buy при пустой корзине перенаправляет в корзину.
      */
     @Test
-    void buyRedirectsToCartWhenCartIsEmpty() throws Exception {
-        when(orderService.buy()).thenThrow(new EmptyCartException("Cart is empty"));
+    void buyRedirectsToCartWhenCartIsEmpty() {
+        when(orderService.buy()).thenReturn(Mono.error(new EmptyCartException("Cart is empty")));
 
-        mockMvc.perform(post("/buy")).andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/cart/items"));
+        client.post()
+                .uri("/buy")
+                .exchange()
+                .expectStatus()
+                .is3xxRedirection()
+                .expectHeader()
+                .location("/cart/items");
     }
 
     /**
-     * Проверяет, что ошибка, не являющаяся пустой корзиной, доходит до пользователя.
+     * Проверяет, что ошибка, не являющаяся пустой корзиной, доходит до
+     * пользователя и не подменяется редиректом в корзину.
      *
      * <p>Контроллер ловит только {@code EmptyCartException}. Если бы он ловил общий
      * {@code IllegalStateException}, эта ошибка тоже дала бы редирект в корзину и
-     * настоящая причина сбоя была бы скрыта от пользователя.
-     *
-     * <p>Проверяется само исключение, а не HTTP-статус: необработанное исключение в
-     * MockMvc пробрасывается как вложенное в {@code ServletException}, а не
-     * преобразуется в ответ — в реальном запросе его поймает DispatcherServlet.
+     * настоящая причина сбоя была бы скрыта.
      */
     @Test
     void buyDoesNotRedirectOnUnexpectedIllegalState() {
-        when(orderService.buy()).thenThrow(new IllegalStateException("connection lost"));
+        when(orderService.buy()).thenReturn(Mono.error(new IllegalStateException("connection lost")));
 
-        assertThatThrownBy(() -> mockMvc.perform(post("/buy")))
-                .hasRootCauseInstanceOf(IllegalStateException.class)
-                .hasRootCauseMessage("connection lost");
+        client.post().uri("/buy").exchange().expectStatus().is5xxServerError();
     }
 
     /**
-     * Проверяет, что несуществующий заказ даёт 404 (а не 500).
-     *
-     * @throws Exception при ошибке выполнения запроса
+     * Проверяет, что несуществующий заказ даёт 404, а не 500.
      */
     @Test
-    void getOrderReturns404WhenNotFound() throws Exception {
-        when(orderService.getOrder(eq(999L))).thenThrow(new OrderNotFoundException(999L));
+    void getOrderReturns404WhenNotFound() {
+        when(orderService.getOrder(eq(999L))).thenReturn(Mono.error(new OrderNotFoundException(999L)));
 
-        mockMvc.perform(get("/orders/999")).andExpect(status().isNotFound());
+        client.get().uri("/orders/999").exchange().expectStatus().isNotFound();
     }
 }

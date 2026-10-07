@@ -1,47 +1,47 @@
 package ru.yandex.practicum.mymarket.repository;
 
 import java.util.Collection;
-import java.util.List;
-import java.util.Optional;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
-import ru.yandex.practicum.mymarket.dto.CartItemCount;
+import org.springframework.data.repository.reactive.ReactiveCrudRepository;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.model.CartItem;
 
 /**
- * Репозиторий позиций корзины покупателя.
+ * Хранилище позиций корзины покупателя.
+ *
+ * <p>Метода {@code findAllWithItem} здесь нет, и это следствие перехода на
+ * R2DBC. В JPA он существовал, чтобы одним {@code join fetch} не плодить запрос
+ * на каждую позицию. В R2DBC такого способа нет: {@code findAll()} отдаёт
+ * плоские позиции, а данные товара добираются вторым запросом по
+ * идентификаторам. Два запроса на всю корзину вместо одного на позицию дешевле,
+ * чем был бы N+1.
+ *
+ * <p>Количества для витрины берутся не проекцией, а обычной выборкой позиций по
+ * идентификаторам. Интерфейсные проекции в R2DBC сопоставляют столбцы по
+ * стратегии именования, и при несовпадении имени геттер возвращает {@code null}
+ * без всякой ошибки — на витрине это выглядело бы как «товар не в корзине».
+ * Конструкторное выражение {@code select new ...} недоступно: запрос уходит в СУБД
+ * дословно и отвергается как некорректный синтаксис.
  */
-public interface CartItemRepository extends JpaRepository<CartItem, Long> {
+public interface CartItemRepository extends ReactiveCrudRepository<CartItem, Long> {
 
     /**
-     * Возвращает все позиции корзины сразу с привязанными товарами
-     * (fetch join позволяет избежать проблемы N+1 при выводе корзины).
-     *
-     * @return список позиций корзины
-     */
-    @Query("select ci from CartItem ci join fetch ci.item")
-    List<CartItem> findAllWithItem();
-
-    /**
-     * Возвращает позицию корзины по идентификатору товара.
+     * Возвращает позицию корзины по товару.
      *
      * @param itemId идентификатор товара
-     * @return позиция корзины (или пустая, если товара в корзине нет)
+     * @return позиция корзины или пустой результат, если товара в корзине нет
      */
-    Optional<CartItem> findByItemId(Long itemId);
+    Mono<CartItem> findByItemId(Long itemId);
 
     /**
-     * Возвращает количество единиц товара в корзине для переданных идентификаторов.
+     * Возвращает позиции корзины по переданным товарам.
      *
-     * <p>Справочный запрос для витрины: нужны только идентификатор товара и количество, поэтому
-     * позиции корзины выбираются двумя скалярными колонками без загрузки самих {@code CartItem}
-     * и без join к {@code Item}. Это ограничивает выборку размером страницы товаров, а не
-     * размером всей корзины.
+     * <p>Выборка намеренно ограничена списком идентификаторов: без него пришлось
+     * бы читать всю корзину, тогда как на витрине нужны только товары текущей
+     * страницы.
      *
-     * @param itemIds идентификаторы товаров текущей страницы
-     * @return список проекций с идентификатором товара и его количеством
+     * @param itemIds идентификаторы товаров
+     * @return поток позиций этих товаров
      */
-    @Query("select ci.item.id as itemId, ci.count as itemCount from CartItem ci where ci.item.id in :itemIds")
-    List<CartItemCount> findCountsByItemIds(@Param("itemIds") Collection<Long> itemIds);
+    Flux<CartItem> findAllByItemIdIn(Collection<Long> itemIds);
 }

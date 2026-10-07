@@ -1,22 +1,23 @@
 package ru.yandex.practicum.mymarket.model;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.OneToOne;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.relational.core.mapping.Table;
 
 /**
- * Позиция корзины: один товар и его количество в корзине.
+ * Позиция корзины: товар и его количество.
+ *
+ * <p>Связь с товаром хранится идентификатором {@code itemId}, а не ссылкой на
+ * {@link Item}. В R2DBC нет ленивой загрузки и объектного графа: вложенная
+ * ссылка маппилась бы в колонку по {@code @Id} вложенного объекта, но при
+ * записи Spring Data попытался бы сохранить и его тоже. Плоский
+ * {@code itemId} делает запись предсказуемой, а данные для страницы корзины
+ * берутся одним запросом с join — см. проекцию в репозитории.
  */
-@Entity
+@Table("cart_item")
 @NoArgsConstructor
 @Getter
 @Setter
@@ -24,24 +25,20 @@ import lombok.Setter;
 public class CartItem {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @OneToOne(fetch = FetchType.EAGER, optional = false)
-    @JoinColumn(name = "item_id", nullable = false, unique = true)
-    private Item item;
+    private Long itemId;
 
-    @Column(nullable = false)
     private int count;
 
     /**
-     * Создаёт позицию корзины для указанного товара.
+     * Создаёт позицию корзины для товара.
      *
-     * @param item  товар
-     * @param count количество единиц товара в корзине
+     * @param itemId идентификатор товара
+     * @param count  количество товара в корзине
      */
-    public CartItem(Item item, int count) {
-        this.item = item;
+    public CartItem(Long itemId, int count) {
+        this.itemId = itemId;
         this.count = count;
     }
 }

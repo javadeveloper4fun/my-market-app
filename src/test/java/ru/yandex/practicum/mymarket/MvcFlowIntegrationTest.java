@@ -1,47 +1,50 @@
 package ru.yandex.practicum.mymarket;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrlPattern;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
 
 import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.test.web.reactive.server.WebTestClient;
+import ru.yandex.practicum.mymarket.model.CartItem;
 import ru.yandex.practicum.mymarket.model.Item;
 import ru.yandex.practicum.mymarket.repository.CartItemRepository;
 import ru.yandex.practicum.mymarket.repository.ItemRepository;
+import ru.yandex.practicum.mymarket.repository.OrderItemRepository;
 import ru.yandex.practicum.mymarket.repository.OrderRepository;
+import ru.yandex.practicum.mymarket.support.DatabaseResetTest;
 
 /**
- * Интеграционные MockMvc-тесты: сквозной сценарий
+ * Интеграционные тесты сквозного сценария
  * «витрина → корзина → оформление заказа → список заказов»
  * на полном Spring-контексте со встроенной H2 (профиль test).
  *
- * <p>Класс помечен {@link Transactional}: {@code @SpringBootTest} сам по себе
- * не откатывает изменения, поэтому без этой аннотации данные, созданные
- * одним тестом, оставались бы в общей базе {@code mem:market} и влияли бы
- * на следующие тесты. С откатом каждый тест начинает с одинакового состояния,
- * а проверка {@code startsWithEmptyDatabaseBecauseEachTestRollsBack}
- * фиксирует это требование.
+ * <p>Запросы идут через {@link WebTestClient}, а не через MockMvc: приложение
+ * работает на WebFlux, и проверять его нужно тем же способом, каким к нему
+ * обращается браузер. Побочный эффект проверки такой же, как был у MockMvc, —
+ * тесты видят настоящие шаблоны, настоящие обработчики исключений и настоящую
+ * кодировку адресов.
+ *
+ * <p>Изоляция тестов — через явную очистку базы, а не через
+ * {@code @Transactional}: откат на реактивном стеке не работает, и почему —
+ * сказано в {@link DatabaseResetTest}. Это тем более важно здесь, чем в тестах
+ * срезов: запросы обрабатываются на потоках Netty, а не на потоке теста, и
+ * общая транзакция не связала бы их в любом случае.
+ *
+ * <p>POST-запросы несут параметры в query-строке, а не в теле: в WebFlux
+ * {@code @RequestParam} читает только query-строку, тогда как в MVC он читал ещё
+ * и тело формы.
  */
 @SpringBootTest
-@AutoConfigureMockMvc
+@AutoConfigureWebTestClient
 @ActiveProfiles("test")
-@Transactional
-class MvcFlowIntegrationTest {
+class MvcFlowIntegrationTest extends DatabaseResetTest {
 
     @Autowired
-    private MockMvc mockMvc;
+    private WebTestClient client;
 
     @Autowired
     private ItemRepository itemRepository;
@@ -52,90 +55,165 @@ class MvcFlowIntegrationTest {
     @Autowired
     private OrderRepository orderRepository;
 
+    @Autowired
+    private OrderItemRepository orderItemRepository;
+
     /**
      * Проверяет, что тесты изолированы друг от друга.
      *
      * <p>База {@code mem:market} общая для всех тестовых классов профиля
      * {@code test} и живёт до конца JVM, поэтому данные, оставленные одним
-     * тестом, иначе влияли бы на остальные. Ожидание пустых таблиц в начале
-     * теста означает, что предыдущий тест был откатан: проверка не зависит
-     * от порядка выполнения, потому что при откате состояние одинаково
-     * всегда.
+     * тестом, иначе влияли бы на остальные. Проверка не зависит от порядка
+     * выполнения, потому что очистка приводит состояние к одному виду всегда.
      */
     @Test
-    void startsWithEmptyDatabaseBecauseEachTestRollsBack() {
-        assertThat(itemRepository.count()).isZero();
-        assertThat(cartItemRepository.count()).isZero();
-        assertThat(orderRepository.count()).isZero();
+    void startsWithEmptyDatabaseBecauseEachTestCleansUp() {
+        assertThat(itemRepository.count().block()).isZero();
+        assertThat(cartItemRepository.count().block()).isZero();
+        assertThat(orderRepository.count().block()).isZero();
     }
 
     /**
      * Проверяет полный путь пользователя: добавление в корзину со страницы
      * витрины, отображение корзины, оформление заказа и переход к заказу.
-     *
-     * @throws Exception при ошибке выполнения запроса
      */
     @Test
-    void fullFlowThroughShowcaseCartAndOrder() throws Exception {
-        Item item = itemRepository.save(new Item("Куртка", "Утеплённая", "images/jacket.jpg", new BigDecimal("4500")));
-        long itemId = item.getId();
+    void fullFlowThroughShowcaseCartAndOrder() {
+        Item item = saveItem("Куртка", "Утеплённая", "4500");
 
-        mockMvc.perform(get("/items")).andExpect(status().isOk()).andExpect(view().name("items"));
+        client.get().uri("/items").exchange().expectStatus().isOk();
 
-        mockMvc.perform(post("/items").param("id", String.valueOf(itemId)).param("action", "PLUS"))
-                .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrl("/items?search=&sort=NO&pageNumber=1&pageSize=5"));
+        client.post()
+                .uri("/items?id=" + item.getId() + "&action=PLUS&search=&sort=NO&pageNumber=1&pageSize=5")
+                .exchange()
+                .expectStatus()
+                .is3xxRedirection()
+                .expectHeader()
+                .location("/items?search=&sort=NO&pageNumber=1&pageSize=5");
 
-        mockMvc.perform(get("/cart/items"))
-                .andExpect(status().isOk())
-                .andExpect(view().name("cart"))
-                .andExpect(model().attributeExists("items", "total"))
-                .andExpect(model().attribute("total", 4500L));
+        client.get()
+                .uri("/cart/items")
+                .exchange()
+                .expectStatus()
+                .isOk()
+                .expectBody(String.class)
+                .value(html -> assertThat(html).contains("Куртка").contains("4500"));
 
-        mockMvc.perform(post("/buy"))
-                .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrlPattern("/orders/*?newOrder=true"));
+        client.post()
+                .uri("/buy")
+                .exchange()
+                .expectStatus()
+                .is3xxRedirection()
+                .expectHeader()
+                .value(
+                        "Location",
+                        location -> assertThat(location).startsWith("/orders/1").contains("newOrder=true"));
 
-        mockMvc.perform(get("/orders"))
-                .andExpect(status().isOk())
-                .andExpect(view().name("orders"))
-                .andExpect(model().attributeExists("orders"));
+        client.get()
+                .uri("/orders")
+                .exchange()
+                .expectStatus()
+                .isOk()
+                .expectBody(String.class)
+                .value(html -> assertThat(html).contains("Заказ"));
     }
 
     /**
      * Проверяет, что после оформления заказа корзина пуста.
-     *
-     * @throws Exception при ошибке выполнения запроса
      */
     @Test
-    void cartIsEmptyAfterBuying() throws Exception {
-        Item item = itemRepository.save(new Item("Ботинки", "Кожаные", "images/boots.jpg", new BigDecimal("5200")));
-        long itemId = item.getId();
+    void cartIsEmptyAfterBuying() {
+        Item item = saveItem("Ботинки", "Кожаные", "5200");
 
-        mockMvc.perform(post("/items").param("id", String.valueOf(itemId)).param("action", "PLUS"));
+        client.post()
+                .uri("/cart/items?id=" + item.getId() + "&action=PLUS")
+                .exchange()
+                .expectStatus()
+                .isOk();
+        client.post().uri("/buy").exchange().expectStatus().is3xxRedirection();
 
-        mockMvc.perform(post("/buy")).andExpect(status().is3xxRedirection());
+        client.get()
+                .uri("/cart/items")
+                .exchange()
+                .expectStatus()
+                .isOk()
+                .expectBody(String.class)
+                .value(html -> assertThat(html).doesNotContain("5200"));
 
-        mockMvc.perform(get("/cart/items")).andExpect(status().isOk()).andExpect(model().attribute("total", 0L));
+        assertThat(cartItemRepository.count().block()).isZero();
+    }
+
+    /**
+     * Проверяет, что позиция заказа получает идентификатор заказа.
+     *
+     * <p>Связь держится на дисциплине вызывающего кода: R2DBC не сохраняет
+     * вложенные сущности, поэтому {@code order_id} проставляется вручную. Если
+     * забыть его, позиция сохранится, но окажется ни в одном заказе, и страница
+     * заказа окажется пустой при непустой корзине на момент покупки.
+     */
+    @Test
+    void orderItemsGetOrderIdSet() {
+        Item item = saveItem("Куртка", "Утеплённая", "4500");
+        cartItemRepository.save(new CartItem(item.getId(), 2)).block();
+
+        String location = client.post()
+                .uri("/buy")
+                .exchange()
+                .expectStatus()
+                .is3xxRedirection()
+                .returnResult(Void.class)
+                .getResponseHeaders()
+                .getFirst("Location");
+
+        // Идентификатор берётся из адреса редиректа, а не вычисляется как count()+1.
+        // Расчёт от количества строк опирался бы на допущение, что следующий
+        // идентификатор равен текущему числу заказов плюс один, — оно верно только
+        // пока идентификаторы выдаёт счётчик, сбрасываемый очисткой перед тестом.
+        long orderId = Long.parseLong(location.substring("/orders/".length(), location.indexOf('?')));
+
+        assertThat(orderItemRepository
+                        .findAllByOrderIdIn(java.util.List.of(orderId))
+                        .collectList()
+                        .block())
+                .hasSize(1)
+                .allSatisfy(orderItem -> assertThat(orderItem.getOrderId()).isEqualTo(orderId));
     }
 
     /**
      * Проверяет, что несуществующий товар отдаёт 404 на полном стеке.
-     *
-     * @throws Exception при ошибке выполнения запроса
      */
     @Test
-    void getItemNotFoundReturns404() throws Exception {
-        mockMvc.perform(get("/items/999999")).andExpect(status().isNotFound());
+    void getItemNotFoundReturns404() {
+        client.get().uri("/items/999999").exchange().expectStatus().isNotFound();
     }
 
     /**
      * Проверяет, что несуществующий заказ отдаёт 404 на полном стеке.
-     *
-     * @throws Exception при ошибке выполнения запроса
      */
     @Test
-    void getOrderNotFoundReturns404() throws Exception {
-        mockMvc.perform(get("/orders/999999")).andExpect(status().isNotFound());
+    void getOrderNotFoundReturns404() {
+        client.get().uri("/orders/999999").exchange().expectStatus().isNotFound();
+    }
+
+    /**
+     * Проверяет, что некорректный идентификатор отдаёт 400, а не 404 или 500.
+     */
+    @Test
+    void getItemWithInvalidIdReturns400() {
+        client.get().uri("/items/abc").exchange().expectStatus().isBadRequest();
+    }
+
+    /**
+     * Создаёт и сохраняет товар.
+     *
+     * @param title       название
+     * @param description описание
+     * @param price       цена
+     * @return сохранённый товар
+     */
+    private Item saveItem(String title, String description, String price) {
+        return itemRepository
+                .save(new Item(title, description, "images/jacket.jpg", new BigDecimal(price)))
+                .block();
     }
 }

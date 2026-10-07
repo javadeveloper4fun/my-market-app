@@ -1,5 +1,5 @@
 # ===================================================================
-# Docker Compose для проекта «Витрина интернет-магазина» (Спринт 5)
+# Docker Compose для проекта «Витрина интернет-магазина» (Спринт 6)
 #
 # Поднимает два сервиса:
 #   market-app       — само Spring Boot-приложение (http://localhost:8080);
@@ -23,6 +23,13 @@ services:
     environment:
       # Внутри сети compose приложение обращается к БД по имени
       # сервиса market-postgres и стандартному порту PostgreSQL 5432.
+      # R2DBC — адрес, по которому работает приложение, JDBC — тот же сервер,
+      # но для Liquibase. Схемы у них разные, и набор переменных тоже разный,
+      # поэтому они заданы раздельно: забыть одну из них — значит либо не
+      # накатить миграции, либо не подключиться к базе вовсе.
+      SPRING_R2DBC_URL: r2dbc:postgresql://market-postgres:5432/market
+      SPRING_R2DBC_USERNAME: market
+      SPRING_R2DBC_PASSWORD: market
       SPRING_DATASOURCE_URL: jdbc:postgresql://market-postgres:5432/market
       SPRING_DATASOURCE_USERNAME: market
       SPRING_DATASOURCE_PASSWORD: market

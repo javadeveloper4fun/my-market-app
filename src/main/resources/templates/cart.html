@@ -31,13 +31,15 @@
                             <span class="badge text-bg-success justify-content-end" th:text="${item.price()}+' руб.'"></span>
                         </h5>
                         <p class="card-text" th:text="${item.description()}"></p>
-                        <form th:action="@{/cart/items}" method="post">
+                        <form method="post">
                             <div class="hstack gap-3">
-                                <input type="hidden" name="id" th:value="${item.id()}">
-                                <button type="submit" class="btn btn-outline-secondary" name="action" value="MINUS">-</button>
+                                <button type="submit" class="btn btn-outline-secondary"
+                                        th:formaction="@{/cart/items(id=${item.id()},action='MINUS')}">-</button>
                                 <span th:text="${item.count()}"></span>
-                                <button type="submit" class="btn btn-outline-secondary" name="action" value="PLUS">+</button>
-                                <button type="submit" class="btn btn-danger ms-auto bi bi-trash" name="action" value="DELETE"></button>
+                                <button type="submit" class="btn btn-outline-secondary"
+                                        th:formaction="@{/cart/items(id=${item.id()},action='PLUS')}">+</button>
+                                <button type="submit" class="btn btn-danger ms-auto bi bi-trash"
+                                        th:formaction="@{/cart/items(id=${item.id()},action='DELETE')}"></button>
                             </div>
                         </form>
                     </div>

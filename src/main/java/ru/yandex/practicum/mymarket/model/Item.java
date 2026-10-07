@@ -1,22 +1,26 @@
 package ru.yandex.practicum.mymarket.model;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.relational.core.mapping.Table;
 
 /**
- * Товар, представленный на витрине магазина.
+ * Товар, доступный для просмотра и заказа.
+ *
+ * <p>В R2DBC сущность — обычный класс с {@code @Id}, без EntityManager и без
+ * ленивой загрузки. Имя таблицы указано явно, потому что по умолчанию из класса
+ * {@code Item} получилось бы {@code item}, а в схеме таблица называется
+ * {@code items}. Остальные имена полей Spring Data приводит к snake_case сам,
+ * поэтому {@code imgPath} ложится в колонку {@code img_path}.
+ *
+ * <p>{@code id} заполняет база: {@code save()} с {@code id == null} делает
+ * INSERT и возвращает сгенерированный ключ.
  */
-@Entity
-@Table(name = "items")
+@Table("items")
 @NoArgsConstructor
 @Getter
 @Setter
@@ -24,23 +28,18 @@ import lombok.Setter;
 public class Item {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
     private String title;
 
-    @Column(nullable = false)
     private String description;
 
-    @Column(nullable = false)
     private String imgPath;
 
-    @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal price;
 
     /**
-     * Создаёт товар с заданными характеристиками.
+     * Создаёт товар, ещё не сохранённый в базе.
      *
      * @param title       название
      * @param description описание

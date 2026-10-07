@@ -1,6 +1,6 @@
 # my-market-app
 
-Спринт 5: витрина интернет-магазина на Spring Boot (`Web MVC` + `Thymeleaf` + `Spring Data JPA` + `Hibernate` + `PostgreSQL`).
+Спринт 6: витрина интернет-магазина на Spring Boot (`WebFlux` + `Thymeleaf` + `Spring Data R2DBC` + `PostgreSQL`). Стек неблокирующий: поток не занимается в ожидании ответа БД.
 
 ## Возможности
 
@@ -22,7 +22,7 @@
 ./gradlew build
 ```
 
-Команда собирает проект, прогоняет линтеры (checkstyle, spotless) и тесты (JUnit 5, Spring Boot Test, MockMvc, DataJpaTest). Готовый Executable JAR лежит в `build/libs/my-market-app-0.0.1-SNAPSHOT.jar`.
+Команда собирает проект, прогоняет линтеры (checkstyle, spotless) и тесты (JUnit 5, Spring Boot Test, WebTestClient, DataR2dbcTest). Готовый Executable JAR лежит в `build/libs/my-market-app-0.0.1-SNAPSHOT.jar`.
 
 Большая часть тестов работает на встроенной H2 в режиме `MODE=PostgreSQL`, и схему для них создаёт тот же changelog, что и основное приложение. Но `ItemRepositoryPostgreSqlTest` поднимает настоящий PostgreSQL в контейнере через Testcontainers, поэтому **для `./gradlew build` Docker необходим**. Тест запускает `postgres:17.5` — тот же образ, что и в `docker-compose.yml`, — и применяет тот же changelog, что гарантирует переносимость миграций на боевую СУБД.
 
@@ -81,7 +81,7 @@ docker compose up -d --build
 
 Для существующей базы с нужными данными этот способ не подходит: тогда требуется разовая процедура baseline — одна отметка текущего состояния как уже применённого. Она в рамках спринта не рассматривается.
 
-## Запуск локально (в среде разработки)
+## Запуск локально
 
 1. Поднять базу данных:
 
@@ -137,6 +137,9 @@ docker compose down -v
 ```bash
 docker build -t my-market-app .
 docker run -p 8080:8080 \
+  -e SPRING_R2DBC_URL=r2dbc:postgresql://<host>:5432/market \
+  -e SPRING_R2DBC_USERNAME=market \
+  -e SPRING_R2DBC_PASSWORD=market \
   -e SPRING_DATASOURCE_URL=jdbc:postgresql://<host>:5432/market \
   -e SPRING_DATASOURCE_USERNAME=market \
   -e SPRING_DATASOURCE_PASSWORD=market \
@@ -161,9 +164,10 @@ docker run -p 8080:8080 \
 
 ```
 src/main/java/ru/yandex/practicum/mymarket/
-├── controller/   # WebMVC-контроллеры
+├── config/       # конфигурация бинов, в том числе DataSource для Liquibase
+├── controller/   # WebFlux-контроллеры
 ├── dto/          # DTO для отображения на страницах
-├── model/        # JPA-сущности
-├── repository/   # Spring Data JPA-репозитории
-└── service/      # сервисный слой
+├── model/        # сущности, отображаемые Spring Data R2DBC
+├── repository/   # Spring Data R2DBC-репозитории
+└── service/      # сервисный слой, возвращает Mono и Flux
 ```

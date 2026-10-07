@@ -7,8 +7,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.util.UriComponentsBuilder;
-import ru.yandex.practicum.mymarket.dto.ItemDto;
-import ru.yandex.practicum.mymarket.dto.ItemsPage;
+import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.service.Action;
 import ru.yandex.practicum.mymarket.service.CartService;
 import ru.yandex.practicum.mymarket.service.ItemService;
@@ -37,22 +36,30 @@ public class ItemsController {
      * @return имя шаблона витрины
      */
     @GetMapping({"/", "/items"})
-    public String getItems(
+    public Mono<String> getItems(
             @RequestParam(defaultValue = "1") int pageNumber,
             @RequestParam(defaultValue = "5") int pageSize,
             @RequestParam(defaultValue = "") String search,
             @RequestParam(defaultValue = "NO") String sort,
             Model model) {
-        ItemsPage itemsPage = itemService.getItems(search, sort, pageNumber, pageSize);
-        model.addAttribute("items", itemsPage.rows());
-        model.addAttribute("search", search);
-        model.addAttribute("sort", sort);
-        model.addAttribute("paging", itemsPage.paging());
-        return "items";
+        return itemService
+                .getItems(search, sort, pageNumber, pageSize)
+                .doOnNext(page -> {
+                    model.addAttribute("items", page.rows());
+                    model.addAttribute("search", page.search());
+                    model.addAttribute("sort", page.sort());
+                    model.addAttribute("paging", page.paging());
+                })
+                .thenReturn("items");
     }
 
     /**
      * Изменяет количество товара в корзине со страницы витрины.
+     *
+     * <p>Адрес редиректа собирается без вызова {@code encode()}. Кодировать его
+     * здесь не нужно: заголовок {@code Location} кодируется при отправке, и
+     * предварительное кодирование приводит к двойному — «%D0%BA» превращается в
+     * «%25D0%25BA», и поиск с кириллицей после перехода перестаёт работать.
      *
      * @param id         идентификатор товара
      * @param search     строка поиска (для сохранения в URL)
@@ -63,7 +70,7 @@ public class ItemsController {
      * @return редирект на витрину с сохранёнными параметрами
      */
     @PostMapping("/items")
-    public String changeItemCount(
+    public Mono<String> changeItemCount(
             @RequestParam long id,
             @RequestParam(defaultValue = "") String search,
             @RequestParam(defaultValue = "NO") String sort,
@@ -71,31 +78,30 @@ public class ItemsController {
             @RequestParam(defaultValue = "1") int pageNumber,
             @RequestParam Action action) {
 
-        cartService.applyAction(id, action);
-
         String url = UriComponentsBuilder.fromPath("/items")
                 .queryParam("search", search)
                 .queryParam("sort", sort)
                 .queryParam("pageNumber", pageNumber)
                 .queryParam("pageSize", pageSize)
                 .build()
-                .encode()
                 .toUriString();
-        return "redirect:" + url;
+
+        return cartService.applyAction(id, action).thenReturn("redirect:" + url);
     }
 
     /**
      * Отображает карточку конкретного товара.
      *
-     * @param id идентификатор товара
+     * @param id    идентификатор товара
      * @param model модель представления
      * @return имя шаблона карточки товара
      */
     @GetMapping("/items/{id}")
-    public String getItem(@PathVariable long id, Model model) {
-        ItemDto itemDto = itemService.getItem(id);
-        model.addAttribute("item", itemDto);
-        return "item";
+    public Mono<String> getItem(@PathVariable long id, Model model) {
+        return itemService
+                .getItem(id)
+                .doOnNext(item -> model.addAttribute("item", item))
+                .thenReturn("item");
     }
 
     /**
@@ -107,9 +113,11 @@ public class ItemsController {
      * @return имя шаблона карточки товара
      */
     @PostMapping("/items/{id}")
-    public String changeItemCountOnItemPage(@PathVariable long id, @RequestParam Action action, Model model) {
-        cartService.applyAction(id, action);
-        model.addAttribute("item", itemService.getItem(id));
-        return "item";
+    public Mono<String> changeItemCountOnItemPage(@PathVariable long id, @RequestParam Action action, Model model) {
+        return cartService
+                .applyAction(id, action)
+                .then(itemService.getItem(id))
+                .doOnNext(item -> model.addAttribute("item", item))
+                .thenReturn("item");
     }
 }
