@@ -47,6 +47,17 @@ dependencies {
     implementation 'org.liquibase:liquibase-core'
     implementation 'org.springframework.boot:spring-boot-liquibase'
 
+    // Спринт 6, Тема 2 — хранение картинок товаров в S3.
+    // AWS SDK подключается напрямую, без Spring Cloud AWS: тот завязан на
+    // Boot 3.x, а проект живёт на Boot 4.1.1 и вместе с ним тянул бы свою
+    // версию. Версии модулей задаёт bom — управления версиями AWS SDK в
+    // spring-boot-dependencies нет, поэтому импорт обязателен.
+    // netty-nio-client нужен для асинхронного клиента: HTTP-клиент на Netty
+    // не занимает потоки, тогда как apache-client на них опирается.
+    implementation platform('software.amazon.awssdk:bom:2.46.7')
+    implementation 'software.amazon.awssdk:s3'
+    runtimeOnly 'software.amazon.awssdk:netty-nio-client'
+
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
     testCompileOnly 'org.projectlombok:lombok'

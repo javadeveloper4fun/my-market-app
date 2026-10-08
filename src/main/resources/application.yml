@@ -34,5 +34,28 @@ spring:
     # действует и на H2: в режиме MODE=PostgreSQL схема называется PUBLIC.
     default-schema: public
 
+  webflux:
+    multipart:
+      # Предельный размер запроса с картинкой. Ключ webflux, а не servlet:
+      # сервлета в проекте нет, и настройка под ним просто не применялась бы.
+      # Значение по умолчанию — 256 КБ, для фото товара этого мало, и
+      # превышение выдавало бы 500 вместо понятного ответа.
+      max-in-memory-size: 5MB
+
 server:
   port: 8080
+
+# Спринт 6, Тема 2 — хранение картинок товаров в S3-совместимом хранилище.
+market:
+  image-s3:
+    # Адрес хранилища. Локально это S3Mock из docker-compose; в среде
+    # эксплуатации подставляется настоящий S3 через переменную окружения.
+    endpoint: ${MARKET_IMAGE_S3_ENDPOINT:http://localhost:9090}
+    bucket: ${MARKET_IMAGE_S3_BUCKET:market-images}
+    region: ${MARKET_IMAGE_S3_REGION:us-east-1}
+    access-key: ${MARKET_IMAGE_S3_ACCESS_KEY:market}
+    secret-key: ${MARKET_IMAGE_S3_SECRET_KEY:market}
+    # Ограничение размера загружаемой картинки задано здесь, а не только
+    # в multipart: одно проверяет сервер отправки, другое — прикладной код,
+    # и без второй проверки файл всё равно уйдёт в хранилище.
+    max-upload-size: 5MB

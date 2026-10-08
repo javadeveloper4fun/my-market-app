@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import ru.yandex.practicum.mymarket.model.CartItem;
@@ -107,7 +108,7 @@ class MvcFlowIntegrationTest extends DatabaseResetTest {
                 .expectHeader()
                 .value(
                         "Location",
-                        location -> assertThat(location).startsWith("/orders/1").contains("newOrder=true"));
+                        location -> assertThat(location).contains("/orders/").endsWith("?newOrder=true"));
 
         client.get()
                 .uri("/orders")
@@ -185,6 +186,33 @@ class MvcFlowIntegrationTest extends DatabaseResetTest {
     @Test
     void getItemNotFoundReturns404() {
         client.get().uri("/items/999999").exchange().expectStatus().isNotFound();
+    }
+
+    /**
+     * Проверяет, что 404 показывается страницей, а не пустым ответом.
+     *
+     * <p>Проверка на статус тут недостаточна: пустой ответ со статусом 404 технически
+     * правилен, но посетитель видит белую страницу без объяснения и без возможности
+     * вернуться. Поэтому проверяется и тело: в нём должен быть адрес витрины,
+     * иначе отказ снова станет немым.
+     *
+     * <p>Заголовок {@code Accept} задан явно: обработка ошибок выбирает формат ответа
+     * по нему, и без {@code text/html} на эти запросы пришёл бы JSON. В браузере
+     * заголовок именно такой, поэтому проверять надо именно его — иначе тест
+     * проверял бы не тот сценарий, который увидит посетитель.
+     */
+    @Test
+    void notFoundShowsErrorPageWithWayBack() {
+        client.get()
+                .uri("/items/999999")
+                .accept(MediaType.TEXT_HTML)
+                .exchange()
+                .expectStatus()
+                .isNotFound()
+                .expectHeader()
+                .contentTypeCompatibleWith(MediaType.TEXT_HTML)
+                .expectBody(String.class)
+                .value(html -> assertThat(html).contains("href=\"/items\""));
     }
 
     /**

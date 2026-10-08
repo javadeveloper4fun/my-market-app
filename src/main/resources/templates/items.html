@@ -20,6 +20,7 @@
                     </h2>
                     <a href="/orders" class="btn btn-secondary ms-auto bi bi-file-earmark-text"> Заказы</a>
                     <a href="/cart/items" class="btn btn-secondary bi bi-cart4"> Корзина</a>
+                    <a href="/items/new" class="btn btn-outline-success bi bi-plus-circle"> Добавить товар</a>
                 </div>
             </div>
         </div>
@@ -82,9 +83,9 @@
         <div class="row p-2">
             <div class="col">
                 <div class="hstack gap-3 justify-content-center">
-                    <button type="submit" class="btn btn-light" th:if="${paging.hasPrevious()}" name="pageNumber" th:value="${paging.pageNumber()-1}" form="main">&larr;</button>
+                    <button type="submit" class="btn btn-light" th:if="${paging.hasPrevious()}" name="pageNumber" th:value="${paging.previousPageNumber()}" form="main">&larr;</button>
                     <span th:text="${'Страница: '+paging.pageNumber()}"></span>
-                    <button type="submit" class="btn btn-light" th:if="${paging.hasNext()}" name="pageNumber" th:value="${paging.pageNumber()+1}" form="main">&rarr;</button>
+                    <button type="submit" class="btn btn-light" th:if="${paging.hasNext()}" name="pageNumber" th:value="${paging.nextPageNumber()}" form="main">&rarr;</button>
                 </div>
             </div>
         </div>

@@ -39,7 +39,7 @@ public abstract class DatabaseResetTest {
 
     /**
      * Операторы очистки в порядке, обратном зависимостям: позиции заказа ссылаются
-     * на зака��ы и товары, поэтому их нужно удалять первыми.
+     * на заказы и товары, поэтому их нужно удалять первыми.
      */
     private static final List<String> RESET_STATEMENTS = List.of(
             "DELETE FROM order_item",

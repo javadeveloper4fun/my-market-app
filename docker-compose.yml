@@ -1,15 +1,17 @@
 # ===================================================================
 # Docker Compose для проекта «Витрина интернет-магазина» (Спринт 6)
 #
-# Поднимает два сервиса:
+# Поднимает четыре сервиса:
 #   market-app       — само Spring Boot-приложение (http://localhost:8080);
-#   market-postgres  — персистентная БД PostgreSQL.
+#   market-postgres  — персистентная БД PostgreSQL;
+#   market-s3mock    — S3-совместимое хранилище картинок;
+#   s3mock-seed      — однократная заливка картинок витрины в хранилище.
 #
-# Запуск всего стека (приложение + БД):
+# Запуск всего стека (приложение + БД + хранилище):
 #   docker compose up -d --build
 #
-# Запуск только БД (для запуска приложения в IDE):
-#   docker compose up -d market-postgres
+# Запуск только БД и хранилища (для запуска приложения в IDE):
+#   docker compose up -d market-postgres market-s3mock s3mock-seed
 # ===================================================================
 
 services:
@@ -33,12 +35,19 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://market-postgres:5432/market
       SPRING_DATASOURCE_USERNAME: market
       SPRING_DATASOURCE_PASSWORD: market
+      # Хранилище картинок. Внутри сети compose адрес указывает на имя
+      # сервиса market-s3mock и порт 9090; scheme — обязательно http,
+      # потому что S3Mock не работает по https.
+      MARKET_IMAGE_S3_ENDPOINT: http://market-s3mock:9090
+      MARKET_IMAGE_S3_BUCKET: market-images
     ports:
       # Проброс порта: "порт хоста : порт контейнера" — витрина
       # доступна в браузере по адресу http://localhost:8080/items.
       - "8080:8080"
     depends_on:
       market-postgres:
+        condition: service_healthy
+      market-s3mock:
         condition: service_healthy
 
   market-postgres:
@@ -65,5 +74,95 @@ services:
       timeout: 3s
       retries: 10
 
+  market-s3mock:
+    # S3Mock выбран вместо MinIO сознательно: образ minio/minio недоступен
+    # из этого окружения (404 на Docker Hub, тег для quay.io не существует,
+    # образ cgr.dev отдаёт 403). S3Mock достаточно для учебной задачи:
+    # он отдаёт подписанные ответы и проверяет сигнатуры при записи.
+    image: adobe/s3mock:latest
+    container_name: my-market-app-s3mock
+    restart: unless-stopped
+    # Контейнер запускается от root: том, смонтированный в /data,
+    # принадлежит root:root с правами 755, а S3Mock работает под
+    # uid=1000 (cnb). Без этого PutObject отдаёт InternalError —
+    # проверено, причина в правах на каталог, а не в настройках хранилища.
+    # Для локального хранилища-имитации это приемлемо; в боевом контуре
+    # каталог выдаётся наружу с нужным владельцем, а контейнер остаётся
+    # непривилегированным.
+    user: "0:0"
+    environment:
+      # Бакет создаётся самим хранилищем при старте. Кода инициализации
+      # в приложении нет и не требуется: без бакета приложение стартует,
+      # а первая же запись вернёт ошибку с понятным кодом.
+      COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: market-images
+      # Фиксированный каталог для объектов. Без этой переменной S3Mock
+      # создаёт каталог со случайным суффиксом прямо в /tmp — каждый
+      # запуск контейнера получал новый путь, а том на /tmp сохранил бы
+      # файлы, к которым при следующем старте хранилище даже не обращается.
+      COM_ADOBE_TESTING_S3MOCK_STORE_ROOT: /data
+    ports:
+      # 9090 — HTTP API хранилища, 9191 — его же HTTPS-вариант.
+      - "9090:9090"
+    volumes:
+      # Именованный том: объекты переживают перезапуск контейнера.
+      # Без него картинки пропадали бы при любом рестарте хранилища,
+      # а в базе оставались бы ссылки на уже несуществующие ключи.
+      - market_s3mock_data:/data
+    healthcheck:
+      # Готовность хранилища проверяется запросом к списку бакетов: без неё
+      # compose отпускает приложение сразу после старта контейнера, и первая
+      # же запись картинки может застать S3Mock ещё не поднятым.
+      #
+      # Проверка идёт через wget, а не curl: в образе S3Mock, собранном
+      # на Cloud Native Buildpacks, curl нет, и проверка с ним всегда
+      # завершалась бы отказом, помечая контейнер неготовым навсегда.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9090/market-images || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  s3mock-seed:
+    # Однократная заливка картинок витрины в хранилище.
+    #
+    # Используется aws-cli, а не curl, по необходимости, а не по привычке:
+    # S3Mock проверяет подписи запросов, и неподписанный PUT отклоняется.
+    # Наивный обход через curl с --data-binary молча не работает: хранилище
+    # отвечает 500, и выглядит это как «хранилище сломано», а не как
+    # «запрос не подписан».
+    image: amazon/aws-cli:2.31.11
+    container_name: my-market-app-s3mock-seed
+    restart: "no"
+    depends_on:
+      market-s3mock:
+        condition: service_healthy
+    environment:
+      # Учётные данные условные: S3Mock проверяет их наличие и формат,
+      # но не сверяет с чем-то заранее заданным.
+      AWS_ACCESS_KEY_ID: market
+      AWS_SECRET_ACCESS_KEY: market
+      AWS_DEFAULT_REGION: us-east-1
+    volumes:
+      # Картинки лежат в репозитории и монтируются в контейнер только на
+      # время заливки. В образ приложения они не попадают: раздаёт их
+      # хранилище, а не статические ресурсы.
+      - ./docker/seed-images:/seed:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        # Ждём готовности хранилища. compose не ждёт его готовности,
+        # а сетевой запрос может прийти раньше, чем откроется порт.
+        for i in $$(seq 1 30); do
+          if curl -s -o /dev/null -I "http://market-s3mock:9090/market-images"; then break; fi
+          sleep 1
+        done
+        for file in /seed/*; do
+          aws --endpoint-url http://market-s3mock:9090 s3 cp "$$file" "s3://market-images/$$(basename $$file)"
+        done
+        echo "Картинки витрины загружены"
+
 volumes:
   market_postgres_data:
+  # Хранилище картинок. Удаляется только вместе с docker compose down -v.
+  market_s3mock_data:

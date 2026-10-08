@@ -1,6 +1,8 @@
 package ru.yandex.practicum.mymarket.service;
 
+import java.math.BigDecimal;
 import java.util.List;
+import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
@@ -29,12 +31,28 @@ import ru.yandex.practicum.mymarket.repository.ItemRepository;
 @Transactional(readOnly = true)
 public class ItemService {
 
+    /**
+     * Префикс пути к картинке в поле {@code img_path}.
+     *
+     * <p>Значение совпадает с тем, что заносит сид-миграция спринта 5, и с тем,
+     * что подставляет шаблон: {@code items.html} строит адрес как
+     * {@code "/" + imgPath}. Совпадение позволяет отдавать и сид-картинки, и
+     * загруженные одним и тем же маршрутом {@code /images/**}, без правки
+     * уже применённых changeset'ов.
+     */
+    private static final String IMAGE_PATH_PREFIX = "images/";
+
     private final ItemRepository itemRepository;
     private final CartItemRepository cartItemRepository;
+    private final ImageStorageService imageStorageService;
 
-    public ItemService(ItemRepository itemRepository, CartItemRepository cartItemRepository) {
+    public ItemService(
+            ItemRepository itemRepository,
+            CartItemRepository cartItemRepository,
+            ImageStorageService imageStorageService) {
         this.itemRepository = itemRepository;
         this.cartItemRepository = cartItemRepository;
+        this.imageStorageService = imageStorageService;
     }
 
     /**
@@ -97,6 +115,45 @@ public class ItemService {
                         .map(CartItem::getCount)
                         .defaultIfEmpty(0)
                         .map(count -> ItemDto.fromEntity(item, count)));
+    }
+
+    /**
+     * Создаёт товар с загруженной картинкой.
+     *
+     * <p>Порядок операций выбран из-за того, что хранилище не участвует в
+     * транзакции базы. Сначала картинка кладётся в хранилище, потом товар
+     * вставляется в базу. Обратный порядок опаснее: если вставка не пройдёт,
+     * товара в базе не будет, а объект в хранилище уже будет, и удалять его
+     * придётся отдельно.
+     *
+     * <p>При неудачной вставке объект удаляется как компенсирующее действие.
+     * Это компенсация, а не откат: хранилище о транзакции базы не знает и
+     * откатиться вместе с ней не может. Из двух возможных остатков — лишний
+     * объект в хранилище или товар со ссылкой на несуществующую картинку —
+     * хуже первый: он никому не виден. Неудача самого удаления только
+     * логируется и наружу не идёт, чтобы не замаскировать исходную ошибку.
+     *
+     * <p>Картинка обязательна: пустую ссылку витрина не рисует, и товар без
+     * неё был бы битой карточкой.
+     *
+     * @param title       название товара
+     * @param description описание товара
+     * @param price       цена в рублях
+     * @param image       загружаемая картинка
+     * @return созданный товар; количество в корзине равно нулю
+     */
+    @Transactional
+    public Mono<ItemDto> createItem(String title, String description, long price, FilePart image) {
+        return imageStorageService
+                .upload(image)
+                .flatMap(key -> itemRepository
+                        .save(new Item(title, description, IMAGE_PATH_PREFIX + key, BigDecimal.valueOf(price)))
+                        .onErrorResume(error -> imageStorageService.delete(key).then(Mono.error(error)))
+                        .flatMap(saved -> cartItemRepository
+                                .findByItemId(saved.getId())
+                                .map(CartItem::getCount)
+                                .defaultIfEmpty(0)
+                                .map(count -> ItemDto.fromEntity(saved, count))));
     }
 
     /**

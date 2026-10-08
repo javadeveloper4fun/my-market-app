@@ -27,7 +27,39 @@ public record Paging(int pageSize, int pageNumber, boolean hasPrevious, boolean 
      * @return состояние навигации
      */
     public static Paging of(int pageSize, int pageNumber, long totalItems) {
-        int shown = pageNumber * pageSize;
+        // Произведение считается в long: при больших номерах страницы int
+        // переполнялся, shown становился отрицательным, и hasNext оставался
+        // истинным навсегда. Наблюдалось это так: на странице 2147483647
+        // кнопка перехода вперёд вела на страницу -2147483648.
+        long shown = (long) pageNumber * pageSize;
         return new Paging(pageSize, pageNumber, pageNumber > 1, shown < totalItems);
+    }
+
+    /**
+     * Номер следующей страницы для кнопки перехода вперёд.
+     *
+     * <p>Отдельный метод, а не {@code pageNumber() + 1} в шаблоне: на верхней
+     * границе {@code int} прибавление единицы переполняется и даёт отрицательный
+     * номер, по которому запрос выглядит осмысленным, хотя это не так. Здесь
+     * номер просто не увеличивается — следующей страницы заведомо нет, ведь
+     * максимум {@code int} а {@code hasNext} на нём ложно.
+     *
+     * @return номер следующей страницы
+     */
+    public int nextPageNumber() {
+        return hasNext ? pageNumber + 1 : pageNumber;
+    }
+
+    /**
+     * Номер предыдущей страницы для кнопки перехода назад.
+     *
+     * <p>Симметрично {@link #nextPageNumber()}: кнопка показывается только при
+     * {@code hasPrevious}, а на первой странице номер остаётся первым, и запрос
+     * не уводит на несуществующую страницу 0.
+     *
+     * @return номер предыдущей страницы
+     */
+    public int previousPageNumber() {
+        return hasPrevious ? pageNumber - 1 : pageNumber;
     }
 }

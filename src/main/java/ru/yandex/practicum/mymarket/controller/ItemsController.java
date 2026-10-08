@@ -1,13 +1,17 @@
 package ru.yandex.practicum.mymarket.controller;
 
+import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.util.UriComponentsBuilder;
 import reactor.core.publisher.Mono;
+import ru.yandex.practicum.mymarket.dto.NewItemForm;
 import ru.yandex.practicum.mymarket.service.Action;
 import ru.yandex.practicum.mymarket.service.CartService;
 import ru.yandex.practicum.mymarket.service.ItemService;
@@ -87,6 +91,48 @@ public class ItemsController {
                 .toUriString();
 
         return cartService.applyAction(id, action).thenReturn("redirect:" + url);
+    }
+
+    /**
+     * Отображает форму добавления товара.
+     *
+     * <p>Маршрут {@code /items/new} выбран потому, что {@code POST /items} уже
+     * занят изменением количества в корзине: оба запроса идут на один адрес
+     * разными методами, и под одним адресом они не ужились бы.
+     *
+     * @return имя шаблона формы
+     */
+    @GetMapping("/items/new")
+    public Mono<String> getNewItemForm() {
+        return Mono.just("item-new");
+    }
+
+    /**
+     * Создаёт товар с загруженной картинкой.
+     *
+     * <p>После успешного добавления — редирект на витрину по схеме
+     * POST-Redirect-GET. Возврат на форму показал бы товар повторно, если
+     * пользователь обновит страницу, и вторая отправка завела бы второй товар.
+     *
+     * <p>Поля формы приходят частями запроса, а не параметрами строки: форма
+     * отправляется с {@code multipart/form-data}, где каждое поле является
+     * частью, а {@code @RequestParam} читает только строку запроса.
+     *
+     * <p>Поля проверяются до вызова сервиса: пустая форма — это ошибка ввода
+     * пользователя, а не сбой приложения, и отвечать на неё надлежит кодом 400
+     * с текстом причины. Без проверки незаполненная цена распаковывалась бы из
+     * обёртки {@code Long} в примитив и давала 500.
+     *
+     * @param form поля формы: название, описание и цена
+     * @param image картинка товара
+     * @return редирект на витрину
+     */
+    @PostMapping("/items/new")
+    public Mono<String> createItem(@ModelAttribute NewItemForm form, @RequestPart("image") FilePart image) {
+        form.validate();
+        return itemService
+                .createItem(form.getTitle(), form.getDescription(), form.getPrice(), image)
+                .thenReturn("redirect:/items");
     }
 
     /**

@@ -7,8 +7,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
-import ru.yandex.practicum.mymarket.service.ItemNotFoundException;
-import ru.yandex.practicum.mymarket.service.OrderNotFoundException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import ru.yandex.practicum.mymarket.dto.InvalidItemFormException;
+import ru.yandex.practicum.mymarket.service.ImageUploadException;
 
 /**
  * Глобальная обработка исключений контроллеров.
@@ -16,6 +17,21 @@ import ru.yandex.practicum.mymarket.service.OrderNotFoundException;
  * <p>Каждый обработчик логирует исключение: без записи в лог ошибка, отвергнутая
  * запросом, не оставляла бы следов, и причину пришлось бы искать по косвенным
  * признакам — по неверному HTTP-статусу или по жалобе пользователя.
+ *
+ * <p>Отказ в пользовательском вводе отдаётся с текстом причины, а не пустым
+ * телом: посетитель должен видеть, что именно исправить. Проверки формы
+ * добавления товара без этого давали 500 — незаполненная цена
+ * распаковывалась из обёртки в примитив и роняла запрос.
+ *
+ * <p>Отсутствие товара или заказа здесь не разбирается намеренно. Статус 404 задан
+ * на самих исключениях через {@code @ResponseStatus}, и ответ уходит в штатную
+ * обработку ошибок Spring, которая отрисовывает {@code templates/error/error.html}.
+ * Имя каталога с {@code error} внутри не опечатка: в Spring Boot 4 обработчик
+ * ошибок ищет вид по именам {@code error/<статус>}, {@code error/<серия>} и
+ * {@code error/error}, и шаблон с плоским именем {@code error.html} не будет
+ * найден вовсе — в этом случае отдаётся дефолтная страница Spring.
+ * Обработчик отвечал бы пустым телом: страницу с ошибкой он всё равно не
+ * отрисовал бы, а посетитель получил бы пустую страницу вместо объяснения.
  */
 @ControllerAdvice
 public class GlobalExceptionHandler {
@@ -23,37 +39,21 @@ public class GlobalExceptionHandler {
     private static final Logger LOG = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     /**
-     * Превращает исключение «товар не найден» в ответ со статусом 404.
+     * Возвращает 400 при ошибке конвертации параметра запроса.
      *
-     * @param e исключение о ненайденном товаре
-     * @return ответ со статусом 404
-     */
-    @ExceptionHandler(ItemNotFoundException.class)
-    public ResponseEntity<Void> handleItemNotFound(ItemNotFoundException e) {
-        LOG.debug("Запрошен несуществующий товар: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
-    }
-
-    /**
-     * Превращает исключение «заказ не найден» в ответ со статусом 404.
+     * <p>На реактивном стеке обработчик практически недостижим, и это проверено
+     * на живом приложении: запрос с неверным значением {@code action} разбирается
+     * не этим обработчиком, а следующим — {@link IllegalArgumentException}
+     * («No enum constant ...»). Причина в том, что {@link MethodArgumentTypeMismatchException}
+     * — исключение servlet-стека, а WebFlux при отказе конвертации бросает
+     * своё исключение, первопричиной которого и будет {@code IllegalArgumentException}.
      *
-     * @param e исключение о ненайденном заказе
-     * @return ответ со статусом 404
-     */
-    @ExceptionHandler(OrderNotFoundException.class)
-    public ResponseEntity<Void> handleOrderNotFound(OrderNotFoundException e) {
-        LOG.debug("Запрошен несуществующий заказ: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
-    }
-
-    /**
-     * Возвращает 400 при ошибке конвертации параметра запроса (например,
-     * невалидное значение enum Action). {@link MethodArgumentTypeMismatchException}
-     * наследуется от {@link TypeMismatchException} и иерархии {@link RuntimeException}.
-     * Его первопричина (отказ конвертации в тип параметра) — {@link IllegalArgumentException}
-     * («No enum constant ...»): резолвер {@code @ExceptionHandler} обходит
-     * цепочку {@link Throwable#getCause()}, что позволяет корректно
-     * отображать ошибку даже при наличии cause.
+     * <p>Оставлено оно потому, что обработчик описывает контракт на случай
+     * servlet-стека, и удалять его молча было бы хуже: при возврате проекта на
+     * MVC поведение изменилось бы без видимой причины. Резолвер при этом ищет
+     * обработчик по типу исключения и его суперклассам и по цепочке причин не
+     * ходит: разбор причины делает инфраструктура обработки исключений, а не
+     * сопоставление обработчиков.
      *
      * @param e исключение ошибки конвертации
      * @return ответ со статусом 400
@@ -78,5 +78,57 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Void> handleIllegalArgument(IllegalArgumentException e) {
         LOG.warn("Некорректный аргумент запроса: {}", e.getMessage(), e);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+    }
+
+    /**
+     * Возвращает 400 с текстом причины, когда картинка товара не принята.
+     *
+     * <p>Отдельный обработчик нужен ради текста: общий обработчик некорректного
+     * аргумента отвечает пустым телом, и пользователь увидел бы просто «400» без
+     * объяснения, в чём именно не так с его картинкой.
+     *
+     * <p>Причина отдаётся и в ответе, и в лог. В ответе она нужна человеку, в лог
+     * — для разбора случаев, когда форму заполняли мимо интерфейса.
+     *
+     * @param e исключение о непринятой картинке
+     * @return ответ со статусом 400 и текстом причины
+     */
+    /**
+     * Отдаёт 400 с текстом причины, если поля формы заполнены неверно.
+     *
+     * <p>Текст ответа — часть контракта: пользователь должен видеть, какое
+     * поле не заполнено, иначе форма отклоняется молча.
+     *
+     * @param e исключение о неверных полях формы
+     * @return ответ со статусом 400 и текстом причины
+     */
+    @ExceptionHandler(InvalidItemFormException.class)
+    public ResponseEntity<String> handleInvalidItemForm(InvalidItemFormException e) {
+        LOG.warn("Форма добавления товара не принята: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+    }
+
+    @ExceptionHandler(ImageUploadException.class)
+    public ResponseEntity<String> handleImageUpload(ImageUploadException e) {
+        LOG.warn("Картинка товара не принята: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+    }
+
+    /**
+     * Возвращает 400, когда запрос превышает допустимый размер файла.
+     *
+     * <p>Размер задан настройкой {@code spring.servlet.multipart.max-file-size}.
+     * Файл большего размера отбрасывается при разборе запроса, до контроллера,
+     * и его отказ приходит с типом, который ни один из обработчиков
+     * контроллеров не ловит. Без этого обработчика пользователь получил бы 500
+     * на действие, которое он может исправить сам.
+     *
+     * @param e исключение разбора запроса с превышенным размером
+     * @return ответ со статусом 400 и текстом причины
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<String> handleMaxUploadSize(MaxUploadSizeExceededException e) {
+        LOG.warn("Файл превышает допустимый размер: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Файл слишком большой. Допустимый размер — 5 МБ.");
     }
 }
