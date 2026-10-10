@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: my-market-app
+
+  datasource:
+    # Спринт 5, Тема 2, Урок 1 — DataSource (фабрика подключений).
+    # Общие параметры любой реализации DataSource. По умолчанию — Hikari (пул, 10 соединений).
+    # Персистентная БД — PostgreSQL (см. docker-compose.yml).
+    # Значения переопределяются переменными окружения при запуске
+    # в Docker: SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME,
+    # SPRING_DATASOURCE_PASSWORD. По умолчанию — локальный PostgreSQL,
+    # доступный по адресу localhost:5439.
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5439/market}
+    username: ${SPRING_DATASOURCE_USERNAME:market}
+    password: ${SPRING_DATASOURCE_PASSWORD:market}
+
+  liquibase:
+    # Спринт 5, Тема 4, Урок 1 — миграции схемы БД.
+    # Схему создаёт Liquibase из файла миграций, а не Hibernate.
+    # Каждый changeset применяется один раз; применённые отмечаются
+    # в служебной таблице DATABASECHANGELOG и при следующем старте
+    # пропускаются. Запуск приложения = применение недостающих миграций.
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+    # Спринт 5, Тема 4, Урок 2 — целевая схема для всех changeset'ов.
+    # Без этой настройки Liquibase берёт имя схемы из метаданных подключения,
+    # то есть из схемы пользователя по умолчанию. Указание явно делает целевую
+    # схему частью конфигурации, а не побочным эффектом учётных данных.
+    # Тестовый профиль не переопределяет параметр, поэтому настройка
+    # действует и на H2: в режиме MODE=PostgreSQL схема называется PUBLIC.
+    default-schema: public
+
+  jpa:
+    # Отключаем привязку EntityManager к запросу (OSIV), чтобы сессия
+    # не удерживалась до конца HTTP-запроса.
+    open-in-view: false
+    properties:
+      hibernate:
+        # Режим validate — сверяет схему БД с сущностями, ничего не меняет.
+        # Раньше здесь был create: он пересоздавал таблицы при каждом старте
+        # и уничтожал данные, поэтому данные приходилось хранить в data.sql
+        # и накатывать заново при каждом запуске.
+        # Теперь схему и стартовые данные создаёт Liquibase,
+        # а Hibernate лишь проверяет, что changelog совпадает с сущностями.
+        hbm2ddl:
+          auto: validate
+
+server:
+  port: 8080

@@ -1,0 +1,37 @@
+# ===================================================================
+# Спринт 5, Тема 4 «Миграция данных с помощью Liquibase».
+#
+# Этот файл — единственный источник правды о структуре БД. Он не
+# выполняет изменений сам, а подключает файлы отдельных миграций
+# в порядке include.
+#
+# Порядок подключения важен и не совпадает с порядком идентификаторов
+# changeset'ов: внешние ключи (5 и 6) требуют, чтобы все таблицы уже
+# существовали, а seed (7) требует таблицу items. Идентификаторы же
+# оставлены теми же, что были при первом появлении этих миграций,
+# чтобы сохранить связь с историей и ранее сделанными комментариями.
+#
+# Схема не указывается ни здесь, ни в подключаемых файлах: она задана
+# одним свойством spring.liquibase.default-schema в application.yml.
+#
+# Уже применённый changeset не редактируется: изменение меняет его
+# MD5SUM, и Liquibase откажется стартовать с ошибкой Validation Failed.
+# Нужно новое изменение — добавляется новый changeset.
+# ===================================================================
+
+databaseChangeLog:
+
+  - include:
+      file: db/changelog/changes/001-init-items.yaml
+  - include:
+      file: db/changelog/changes/002-init-cart-item.yaml
+  - include:
+      file: db/changelog/changes/003-init-orders.yaml
+  - include:
+      file: db/changelog/changes/004-init-order-item.yaml
+  - include:
+      file: db/changelog/changes/005-add-foreign-keys.yaml
+  - include:
+      file: db/changelog/changes/006-seed-items.yaml
+  - include:
+      file: db/changelog/changes/007-add-index.yaml

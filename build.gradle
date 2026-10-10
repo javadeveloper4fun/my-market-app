@@ -1,0 +1,92 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '4.1.1'
+    id 'io.spring.dependency-management' version '1.1.7'
+    id 'checkstyle'
+    id 'com.diffplug.spotless' version '8.10.2'
+}
+
+group = 'ru.yandex.practicum'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+    // Прокси Hibernate предоставляется автоматически, отдельная зависимость не нужна.
+    // Spring Data JPA скрывает EntityManager и Session за интерфейсами репозиториев,
+    // но знать Hibernate нужно: его кэши (L1/L2), dirty checking и N+1
+    // определяют поведение приложения (Спринт 5, Тема 3, Уроки 4-5).
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+
+    // Спринт 5, Тема 4 — миграции схемы БД.
+    // Нужны две зависимости, и это не дублирование:
+    // liquibase-core — сам Liquibase (разбор changelog, выполнение changeset'ов),
+    // версию подставляет spring-boot-dependencies из dependencyManagement ниже.
+    // spring-boot-liquibase — автоконфигурация Spring Boot. В Spring Boot 4
+    // автоконфигурация разнесена по отдельным модулям, и LiquibaseAutoConfiguration
+    // лежит именно в spring-boot-liquibase. Без него одного liquibase-core
+    // недостаточно: бин liquibase просто не создастся, миграции не выполнятся.
+    implementation 'org.liquibase:liquibase-core'
+    implementation 'org.springframework.boot:spring-boot-liquibase'
+
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    testCompileOnly 'org.projectlombok:lombok'
+    testAnnotationProcessor 'org.projectlombok:lombok'
+
+    runtimeOnly 'org.postgresql:postgresql'
+    testRuntimeOnly 'com.h2database:h2'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
+
+    // Спринт 5, Тема 5, Урок 2 — проверка схемы и запросов на настоящей СУБД.
+    // H2 в MODE=PostgreSQL отличается от PostgreSQL, поэтому для части тестов
+    // поднимается реальный сервер в контейнере.
+    // spring-boot-testcontainers — аннотация @ServiceConnection: она берёт url,
+    // имя пользователя и пароль из контейнера и подставляет их в DataSource,
+    // поэтому @DynamicPropertySource писать не нужно.
+    // testcontainers-postgresql — контейнер с PostgreSQL,
+    // testcontainers-junit-jupiter — интеграция контейнеров с JUnit.
+    // Имена модулей с префиксом testcontainers- относятся к Testcontainers 2.x;
+    // в 1.x модули назывались postgresql и junit-jupiter. Версию всех трёх
+    // задаёт testcontainers-bom, подключённый через spring-boot-dependencies.
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:testcontainers-postgresql'
+    testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.boot:spring-boot-dependencies:4.1.1"
+    }
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+spotless {
+    java {
+        target 'src/*/java/**/*.java'
+        palantirJavaFormat('2.98.0')
+        removeUnusedImports()
+    }
+}
+
+checkstyle {
+    toolVersion = '10.12.5'
+    configFile = file("${rootDir}/config/checkstyle/checkstyle.xml")
+    ignoreFailures = false
+}

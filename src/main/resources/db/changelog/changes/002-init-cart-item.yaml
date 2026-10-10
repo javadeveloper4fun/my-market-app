@@ -1,0 +1,52 @@
+# ===================================================================
+# Таблица позиций корзины.
+#
+# item_id объявлен уникальным, потому что в сущности CartItem связь
+# с Item — @OneToOne: один товар не может лежать в корзине дважды.
+# В PostgreSQL уникальное ограничение само создаёт индекс, поэтому
+# отдельный индекс на item_id не нужен.
+#
+# Режим preConditions по умолчанию — HALT: если таблица уже существует,
+# changeset не выполняется, а Liquibase прерывает запуск. MARK_RAN
+# отметил бы изменение выполненным, хотя оно не выполнялось, и база
+# прошла бы миграции, не будучи ими созданной.
+# ===================================================================
+
+databaseChangeLog:
+
+  - changeSet:
+      id: "3"
+      author: "student"
+      comment: "Таблица позиций корзины"
+      onFailMessage: "Таблица cart_item уже существует: база создана в обход Liquibase"
+      preConditions:
+        - not:
+            - tableExists:
+                tableName: cart_item
+      changes:
+        - createTable:
+            tableName: cart_item
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_cart_item
+                    nullable: false
+              - column:
+                  name: item_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: uq_cart_item_item
+              - column:
+                  name: count
+                  type: INTEGER
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropTable:
+            tableName: cart_item

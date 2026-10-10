@@ -1,0 +1,62 @@
+# ===================================================================
+# Docker Compose для проекта «Витрина интернет-магазина» (Спринт 5)
+#
+# Поднимает два сервиса:
+#   market-app       — само Spring Boot-приложение (http://localhost:8080);
+#   market-postgres  — персистентная БД PostgreSQL.
+#
+# Запуск всего стека (приложение + БД):
+#   docker compose up -d --build
+#
+# Запуск только БД (для запуска приложения в IDE):
+#   docker compose up -d market-postgres
+# ===================================================================
+
+services:
+  market-app:
+    # Само приложение: многоэтапная сборка из Dockerfile.
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: my-market-app
+    restart: unless-stopped
+    environment:
+      # Внутри сети compose приложение обращается к БД по имени
+      # сервиса market-postgres и стандартному порту PostgreSQL 5432.
+      SPRING_DATASOURCE_URL: jdbc:postgresql://market-postgres:5432/market
+      SPRING_DATASOURCE_USERNAME: market
+      SPRING_DATASOURCE_PASSWORD: market
+    ports:
+      # Проброс порта: "порт хоста : порт контейнера" — витрина
+      # доступна в браузере по адресу http://localhost:8080/items.
+      - "8080:8080"
+    depends_on:
+      market-postgres:
+        condition: service_healthy
+
+  market-postgres:
+    image: postgres:17.5
+    container_name: my-market-app-postgres
+    restart: unless-stopped
+    environment:
+      # Параметры создаваемой базы, пользователя и пароля задаются
+      # переменными окружения entrypoint-скрипта официального образа.
+      POSTGRES_DB: market
+      POSTGRES_USER: market
+      POSTGRES_PASSWORD: market
+    ports:
+      # Проброс порта: "порт хоста : порт контейнера" — при локальном
+      # запуске из IDE приложение обращается к БД по localhost:5439.
+      - "5439:5432"
+    volumes:
+      # Именованный том сохраняет данные БД между перезапусками контейнера.
+      - market_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # Проверка готовности БД: pg_isready каждые 5 секунд, до 10 попыток.
+      test: ["CMD-SHELL", "pg_isready -U market -d market"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  market_postgres_data:

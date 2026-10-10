@@ -1,0 +1,21 @@
+/gradlew text eol=lf
+*.cmd text eol=crlf
+
+# Переводы строк в репозитории фиксируются здесь, а не полагаются на
+# локальные настройки машины (core.autocrlf), которые у разных разработчиков
+# различаются. Это влияет не только на diff, но и на сборку: Spotless
+# сравнивает байты файла, поэтому CRLF в исходнике проходит проверку на хосте
+# с Windows и падает при сборке внутри Linux-контейнера.
+*.java text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.xml text eol=lf
+*.properties text eol=lf
+*.gradle text eol=lf
+*.md text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+Dockerfile text eol=lf
+.gitattributes text eol=lf
+.gitignore text eol=lf
+.dockerignore text eol=lf
