@@ -14,8 +14,11 @@ import org.springframework.data.relational.core.mapping.Table;
  * {@link Item}. В R2DBC нет ленивой загрузки и объектного графа: вложенная
  * ссылка маппилась бы в колонку по {@code @Id} вложенного объекта, но при
  * записи Spring Data попытался бы сохранить и его тоже. Плоский
- * {@code itemId} делает запись предсказуемой, а данные для страницы корзины
- * берутся одним запросом с join — см. проекцию в репозитории.
+ * {@code itemId} делает запись предсказуемой.
+ *
+ * <p>Данные для страницы корзины добираются вторым запросом по идентификаторам,
+ * а не выборкой с join — почему так, объяснено в
+ * {@link ru.yandex.practicum.mymarket.repository.CartItemRepository}.
  */
 @Table("cart_item")
 @NoArgsConstructor
