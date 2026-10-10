@@ -31,7 +31,7 @@
 Без Docker пройдут только тесты на H2:
 
 ```bash
-./gradlew test --tests '*RepositoryTest' --tests '*ServiceTest' --tests '*ControllerTest' --tests '*MvcFlowIntegrationTest'
+./gradlew test --tests '*RepositoryTest' --tests '*ServiceTest' --tests '*ControllerTest' --tests '*WebFluxFlowIntegrationTest'
 ```
 
 ## Как создаётся база данных

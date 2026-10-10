@@ -52,7 +52,7 @@ import ru.yandex.practicum.mymarket.support.DatabaseResetTest;
 @SpringBootTest
 @AutoConfigureWebTestClient
 @ActiveProfiles("test")
-class MvcFlowIntegrationTest extends DatabaseResetTest {
+class WebFluxFlowIntegrationTest extends DatabaseResetTest {
 
     @Autowired
     private WebTestClient client;
