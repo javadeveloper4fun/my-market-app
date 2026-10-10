@@ -27,9 +27,12 @@ import ru.yandex.practicum.mymarket.repository.OrderRepository;
  * {@code distinct}, где {@code distinct} маскировал размножение строки заказа по
  * числу позиций.
  *
- * <p>{@code @Transactional} работает за счёт бина {@code R2dbcTransactionManager}:
- * транзакция открывается при подписке на {@code Mono} и закрывается по его
- * завершении.
+ * <p>Тема 4/11 «Реактивный доступ к данным в Spring Data R2DBC», раздел
+ * «Декларативное управление транзакциями через {@code @Transactional}»:
+ * {@code @Transactional} работает за счёт бина {@code R2dbcTransactionManager} —
+ * на реактивном стеке менеджер транзакций другой, блокирующий
+ * {@code DataSourceTransactionManager} не подходит. Транзакция открывается при
+ * подписке на {@code Mono} и закрывается по его завершении.
  */
 @Service
 @Transactional(readOnly = true)

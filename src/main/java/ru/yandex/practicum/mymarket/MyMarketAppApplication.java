@@ -26,6 +26,12 @@ import org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerA
  * {@code NoUniqueBeanDefinitionException}. Транзакции в приложении
  * обслуживает {@code R2dbcTransactionManager}, и JDBC-менеджер здесь только
  * мешает.
+ *
+ * <p>Тема 4/11 «Реактивный доступ к данным в Spring Data R2DBC», раздел
+ * «Основные отличия транзакций в R2DBC и JDBC»: на блокирующем стеке менеджер
+ * транзакций создавался сам из единственного {@code DataSource}, поэтому
+ * вопроса не возникало. Здесь соединений два — R2DBC и JDBC, — и
+ * автоконфигурация не может знать, какой из них выбрать, отсюда и исключение.
  */
 @SpringBootApplication(exclude = DataSourceTransactionManagerAutoConfiguration.class)
 public class MyMarketAppApplication {
