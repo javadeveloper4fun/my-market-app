@@ -16,6 +16,17 @@ import ru.yandex.practicum.mymarket.service.Action;
 import ru.yandex.practicum.mymarket.service.CartService;
 import ru.yandex.practicum.mymarket.service.ItemService;
 
+/**
+ * Контроллер витрины товаров.
+ *
+ * <p>Тема 8/11 «Фреймворк WebFlux в Spring», урок 4/5: обработка входящего
+ * запроса сосредоточена в {@code DispatcherHandler} — он отвечает за поиск
+ * обработчика и преобразование ответа. Это аналог {@code DispatcherServlet} из
+ * Spring MVC, то есть реализация паттерна Front Controller, только на
+ * реактивном стеке. Класс помечен той же аннотацией {@code @Controller} из
+ * {@code org.springframework.stereotype}, что и в блокирующей версии: при переходе
+ * на WebFlux пришлось менять не разметку, а типы возвращаемых значений.
+ */
 @Controller
 public class ItemsController {
 
@@ -44,6 +55,13 @@ public class ItemsController {
      * Цепочка подписывается при отправке ответа, и поток не занимается в
      * ожидании базы — он переключается на другие запросы, что и описывает
      * пункт «Отзывчивость».
+     *
+     * <p>Тема 8/11, урок 5/5: в WebFlux вместо {@code ModelAndView} используется
+     * интерфейс {@code Rendering}, однако {@link Model} продолжает работать,
+     * поэтому атрибуты добавляются в него как обычно. Возвращается
+     * {@code Mono<String>} — имя шаблона, а не готовая страница: обработчик
+     * результата подписывается на реактивный тип, и страница приходит позже,
+     * в отдельном потоке.
      */
     @GetMapping({"/", "/items"})
     public Mono<String> getItems(
