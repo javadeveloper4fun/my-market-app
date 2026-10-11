@@ -47,13 +47,13 @@ dependencies {
     implementation 'org.liquibase:liquibase-core'
     implementation 'org.springframework.boot:spring-boot-liquibase'
 
-    // Спринт 6, Тема 2 — хранение картинок товаров в S3.
+    // Спринт 6, Тема 11 «Проектная работа» — хранение картинок товаров в S3:
+    // выбранный способ выполнить требование задания о загрузке списка товаров.
     // AWS SDK подключается напрямую, без Spring Cloud AWS: тот завязан на
-    // Boot 3.x, а проект живёт на Boot 4.1.1 и вместе с ним тянул бы свою
-    // версию. Версии модулей задаёт bom — управления версиями AWS SDK в
-    // spring-boot-dependencies нет, поэтому импорт обязателен.
-    // netty-nio-client нужен для асинхронного клиента: HTTP-клиент на Netty
-    // не занимает потоки, тогда как apache-client на них опирается.
+    // Boot 3.x, а проект живёт на Boot 4.1.1. Версии модулей задаёт bom —
+    // управления версиями AWS SDK в spring-boot-dependencies нет. Клиент —
+    // netty-nio: HTTP-клиент на Netty не занимает потоки, apache-client
+    // опирается на них.
     implementation platform('software.amazon.awssdk:bom:2.46.7')
     implementation 'software.amazon.awssdk:s3'
     runtimeOnly 'software.amazon.awssdk:netty-nio-client'
@@ -74,19 +74,17 @@ dependencies {
     // Спринт 5, Тема 5, Урок 2 — проверка схемы и запросов на настоящей СУБД.
     // H2 в MODE=PostgreSQL отличается от PostgreSQL, поэтому для части тестов
     // поднимается реальный сервер в контейнере.
-    // spring-boot-testcontainers — аннотация @ServiceConnection: она берёт url,
-    // имя пользователя и пароль из контейнера и подставляет их в DataSource,
-    // поэтому @DynamicPropertySource писать не нужно.
-    // testcontainers-postgresql — контейнер с PostgreSQL,
-    // testcontainers-junit-jupiter — интеграция контейнеров с JUnit.
-    // Имена модулей с префиксом testcontainers- относятся к Testcontainers 2.x;
-    // в 1.x модули назывались postgresql и junit-jupiter. Версию всех задаёт
-    // testcontainers-bom, подключённый через spring-boot-dependencies.
+    // spring-boot-testcontainers — аннотация @ServiceConnection: берёт url,
+    // имя пользователя и пароль из контейнера, поэтому @DynamicPropertySource
+    // писать не нужно. testcontainers-postgresql — контейнер с PostgreSQL,
+    // testcontainers-junit-jupiter — интеграция контейнеров с JUnit. Префикс
+    // testcontainers- в именах модулей относится к Testcontainers 2.x, в 1.x
+    // они назывались postgresql и junit-jupiter.
     //
-    // Отдельного testcontainers-r2dbc здесь нет: версия 2.0.5 не публикуется, и
-    // объявляющий R2DBCDatabaseContainer интерфейс из него недоступен.
-    // Поэтому в PostgreSqlTestContainerConfiguration фабрика соединений R2DBC
-    // собирается из контейнера вручную — причина описана там же.
+    // Отдельного testcontainers-r2dbc нет: версия 2.0.5 не публикуется, и
+    // интерфейс R2DBCDatabaseContainer из него недоступен. Поэтому в
+    // PostgreSqlTestContainerConfiguration фабрика соединений R2DBC собирается
+    // из контейнера вручную — причина описана там же.
     testImplementation 'org.springframework.boot:spring-boot-testcontainers'
     testImplementation 'org.testcontainers:testcontainers-postgresql'
     testImplementation 'org.testcontainers:testcontainers-junit-jupiter'

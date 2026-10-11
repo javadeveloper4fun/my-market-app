@@ -14,14 +14,12 @@ import org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerA
  * Executable Jar. Прежний блокирующий стек (Spring Web MVC + Spring Data JPA)
  * больше не используется.
  *
- * <p>Тема 10/11 «Конфигурирование и тестирование WebFlux», урок 1/4: подключение
- * {@code spring-boot-starter-webflux} поднимает из коробки реактивный сервер —
- * по умолчанию Netty, слушающий порт {@code server.port}, — оба стиля
- * маршрутизации, реактивные кодеки, бин {@code WebClient.Builder} и раздачу
- * статических ресурсов из {@code classpath:/static}. Шаблоны отрисовывает
+ * <p>Тема 10/11 «Конфигурирование и тестирование WebFlux», урок 1/4: сервер,
+ * кодеки и оба стиля маршрутизации поднимает автоконфигурация по наличию
+ * стартера, поэтому отдельных настроек в проекте нет. Шаблоны отрисовывает
  * {@code ThymeleafViewResolver}: он настраивается автоматически вместе со
  * стартером Thymeleaf, поэтому собственного бина {@code ViewResolver}
- * в проекте нет.
+ * в проекте тоже нет.
  *
  * <p>Здесь же исключена автоконфигурация
  * {@link DataSourceTransactionManagerAutoConfiguration}. Исключение вызвано
