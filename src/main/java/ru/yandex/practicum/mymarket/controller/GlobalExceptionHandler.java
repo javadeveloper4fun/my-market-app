@@ -41,6 +41,8 @@ public class GlobalExceptionHandler {
 
     private static final Logger LOG = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    private static final String MAX_UPLOAD_SIZE_MESSAGE = "Файл слишком большой. Превышен допустимый размер загрузки.";
+
     /**
      * Возвращает 400 при некорректном аргументе, переданном в метод контроллера.
      *
@@ -53,7 +55,7 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Void> handleIllegalArgument(IllegalArgumentException e) {
-        LOG.warn("Некорректный аргумент запроса: {}", e.getMessage(), e);
+        LOG.warn("Некорректный аргумент запроса: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
     }
 
@@ -106,6 +108,6 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<String> handleMaxUploadSize(MaxUploadSizeExceededException e) {
         LOG.warn("Файл превышает допустимый размер: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Файл слишком большой. Допустимый размер — 5 МБ.");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(MAX_UPLOAD_SIZE_MESSAGE);
     }
 }

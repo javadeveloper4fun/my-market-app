@@ -219,7 +219,7 @@ public class ImageStorageService {
         return switch (extensionOf(key)) {
             case "png" -> MediaType.IMAGE_PNG;
             case "gif" -> MediaType.IMAGE_GIF;
-            default -> MediaType.IMAGE_JPEG;
+            default -> MediaType.APPLICATION_OCTET_STREAM;
         };
     }
 
