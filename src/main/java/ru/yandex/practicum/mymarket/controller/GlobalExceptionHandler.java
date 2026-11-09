@@ -6,7 +6,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import ru.yandex.practicum.mymarket.dto.InvalidItemFormException;
 import ru.yandex.practicum.mymarket.service.ImageUploadException;
@@ -37,32 +36,6 @@ import ru.yandex.practicum.mymarket.service.ImageUploadException;
 public class GlobalExceptionHandler {
 
     private static final Logger LOG = LoggerFactory.getLogger(GlobalExceptionHandler.class);
-
-    /**
-     * Возвращает 400 при ошибке конвертации параметра запроса.
-     *
-     * <p>На реактивном стеке обработчик практически недостижим, и это проверено
-     * на живом приложении: запрос с неверным значением {@code action} разбирается
-     * не этим обработчиком, а следующим — {@link IllegalArgumentException}
-     * («No enum constant ...»). Причина в том, что {@link MethodArgumentTypeMismatchException}
-     * — исключение servlet-стека, а WebFlux при отказе конвертации бросает
-     * своё исключение, первопричиной которого и будет {@code IllegalArgumentException}.
-     *
-     * <p>Оставлено оно потому, что обработчик описывает контракт на случай
-     * servlet-стека, и удалять его молча было бы хуже: при возврате проекта на
-     * MVC поведение изменилось бы без видимой причины. Резолвер при этом ищет
-     * обработчик по типу исключения и его суперклассам и по цепочке причин не
-     * ходит: разбор причины делает инфраструктура обработки исключений, а не
-     * сопоставление обработчиков.
-     *
-     * @param e исключение ошибки конвертации
-     * @return ответ со статусом 400
-     */
-    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
-    public ResponseEntity<Void> handleTypeMismatch(MethodArgumentTypeMismatchException e) {
-        LOG.warn("Не удалось преобразовать параметр запроса '{}': {}", e.getName(), e.getMessage());
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
-    }
 
     /**
      * Возвращает 400 при некорректном аргументе, переданном в метод контроллера.
