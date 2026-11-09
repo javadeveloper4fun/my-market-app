@@ -68,6 +68,13 @@ class ItemRepositoryPostgreSqlTest extends DatabaseResetTest {
         }
     }
 
+    /**
+     * Возвращает PostgreSQL-вариант сброса счётчиков ({@code ALTER SEQUENCE ... RESTART WITH 1}).
+     * Используется вместо H2-варианта, так как PostgreSQL не поддерживает
+     * {@code ALTER TABLE ... ALTER COLUMN ... RESTART WITH}.
+     *
+     * @return список операторов очистки для PostgreSQL
+     */
     @Override
     protected List<String> resetStatements() {
         return postgreSqlResetStatements();

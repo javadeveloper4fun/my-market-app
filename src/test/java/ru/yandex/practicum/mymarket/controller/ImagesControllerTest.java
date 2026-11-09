@@ -111,6 +111,23 @@ class ImagesControllerTest extends DatabaseResetTest {
     }
 
     /**
+     * Проверяет, что JPEG-картинка отдаётся с {@code image/jpeg}.
+     */
+    @Test
+    void servingImageUsesContentTypeByExtensionForJpeg() {
+        when(imageStorageService.read("photo.jpg")).thenReturn(Mono.just(onePixelImage()));
+        when(imageStorageService.contentTypeOf("photo.jpg")).thenReturn(MediaType.IMAGE_JPEG);
+
+        client.get()
+                .uri("/images/photo.jpg")
+                .exchange()
+                .expectStatus()
+                .isOk()
+                .expectHeader()
+                .contentType(MediaType.IMAGE_JPEG);
+    }
+
+    /**
      * Проверяет, что ключ с вложенным каталогом доходит до хранилища целиком.
      *
      * <p>Маршрут жадный, и это сделано именно ради таких ключей: обычный шаблон

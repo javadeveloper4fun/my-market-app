@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.util.UriComponentsBuilder;
 import reactor.core.publisher.Mono;
+import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.NewItemForm;
 import ru.yandex.practicum.mymarket.service.Action;
 import ru.yandex.practicum.mymarket.service.CartService;
@@ -84,6 +85,7 @@ public class ItemsController {
                     model.addAttribute("search", page.search());
                     model.addAttribute("sort", page.sort());
                     model.addAttribute("paging", page.paging());
+                    model.addAttribute("placeholderId", ItemDto.PLACEHOLDER_ID);
                 })
                 .thenReturn("items");
     }

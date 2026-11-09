@@ -1,5 +1,6 @@
 package ru.yandex.practicum.mymarket.service;
 
+import jakarta.annotation.PostConstruct;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Locale;
@@ -8,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferFactory;
+import org.springframework.core.io.buffer.DataBufferLimitException;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.core.io.buffer.DefaultDataBufferFactory;
 import org.springframework.http.MediaType;
@@ -91,6 +93,16 @@ public class ImageStorageService {
     }
 
     /**
+     * Проверяет корректность {@code market.image-s3.max-upload-size} при старте приложения.
+     * Конфигурационная ошибка должна падать громко при старте, а не отдавать 400 пользователю
+     * при первой загрузке картинки.
+     */
+    @PostConstruct
+    private void validateMaxUploadSize() {
+        parseSize(properties.getMaxUploadSize());
+    }
+
+    /**
      * Загружает картинку в хранилище.
      *
      * @param image загружаемая картинка
@@ -107,7 +119,7 @@ public class ImageStorageService {
     }
 
     /**
-     * Отдаёт содержимое объекта потоком.
+     * Возвращает содержимое объекта потоком.
      *
      * <p>Содержимое приходит из хранилища потоком {@link ByteBuffer}, а не
      * собранным ответом: картинка не занимает память целиком, пока браузер
@@ -117,47 +129,28 @@ public class ImageStorageService {
      * ради кода ответа на отсутствующий объект. Поток с содержимым подписывается
      * уже после отправки статуса и заголовков, поэтому ошибка «объекта нет»
      * возникла бы слишком поздно: клиент получил бы 200 с оборванным телом
-     * вместо 404. Пояснения к каждому шагу стоят в коде метода.
+     * вместо 404.
      *
      * @param key ключ объекта
      * @return поток буферов с содержимым картинки
      */
     public Mono<Flux<DataBuffer>> read(String key) {
-        // Тема 2/11, п. «Холодный поток»: Mono.defer откладывает запрос
-        // к хранилищу до подписки. Пока ответ не отправляют, сетевого
-        // вызова не происходит вовсе.
+        // Тема 2/11, урок 1/3 «Спецификация Reactive Streams».
+        // Mono.defer откладывает запрос к хранилищу до подписки: пока ответ не
+        // отправляют, сетевого вызова не происходит вовсе.
         return Mono.defer(() -> Mono.fromFuture(s3Client.getObject(
                         GetObjectRequest.builder()
                                 .bucket(properties.getBucket())
                                 .key(key)
                                 .build(),
                         // Тема 3/11, урок 1/3 «Спецификация Reactive Streams».
-                        // Из четырёх интерфейсов спецификации здесь встречается
-                        // один — Publisher, источник данных. Его отдаёт AWS SDK,
+                        // Из четырёх интерфейсов спецификации здесь используется
+                        // только Publisher — источник данных. Его отдаёт AWS SDK,
                         // то есть издателем выступает HTTP-клиент хранилища.
                         AsyncResponseTransformer.toPublisher())))
                 // Flux.from оборачивает этот Publisher в тип Reactor. Сама
                 // подписка происходит на стороне каркаса в момент отправки
-                // ответа, поэтому явного subscribe() в коде нет. Выглядит так:
-                //   1. Reactor создаёт свою реализацию Subscriber — обычный
-                //      класс, написанный не в этом проекте;
-                //   2. вызывается publisher.subscribe(подписчик);
-                //   3. в ответ на onSubscribe издатель отдаёт реализацию
-                //      Subscription;
-                //   4. подписчик вызывает request(n), и Flux.from переводит
-                //      этот запрос в требование к AWS SDK.
-                // Только после четвёртого шага начинают приходить буферы.
-                // Обратное давление из темы 2/11 здесь выполняет Reactor, а не
-                // код проекта: подписчик создаётся внутри подписки, поэтому
-                // request(n) в исходниках не встречается.
-                //
-                // Остальные три интерфейса — Subscriber, Subscription и
-                // Processor — руками здесь не используются: первые два создаёт
-                // Reactor по подписке, а Processor нужен там, где данные проходят
-                // через обработку, которую можно подписать и отписать независимо
-                // от источника. Поиском по коду subscribe() поэтому ничего не
-                // найти: интерфейсы работают постоянно, но реализации создаются
-                // изнутри Reactor.
+                // ответа, поэтому явного subscribe() в коде нет.
                 .map(publisher -> Flux.from(publisher).map(buffer -> BUFFER_FACTORY.wrap(buffer)))
                 // Отсутствующий объект превращается в ImageNotFoundException:
                 // хранилище отвечает на него кодом 404, и отличить это от сбоя
@@ -214,11 +207,17 @@ public class ImageStorageService {
      *
      * @param key ключ объекта
      * @return тип содержимого для заголовка ответа
+     * @see #ALLOWED_EXTENSIONS для допустимых расширений (jpg/jpeg/png/gif → image/*, иначе application/octet-stream)
+     * <p>Неизвестное расширение (например, {@code .txt}) даёт {@link MediaType#APPLICATION_OCTET_STREAM},
+     * а не {@link MediaType#IMAGE_JPEG}: доверять расширению при формировании
+     * {@code Content-Type} нельзя — файл с расширением {@code .jpg} может быть чем угодно,
+     * и браузер не должен пытаться отрендерить его как картинку.
      */
     public MediaType contentTypeOf(String key) {
         return switch (extensionOf(key)) {
             case "png" -> MediaType.IMAGE_PNG;
             case "gif" -> MediaType.IMAGE_GIF;
+            case "jpg", "jpeg" -> MediaType.IMAGE_JPEG;
             default -> MediaType.APPLICATION_OCTET_STREAM;
         };
     }
@@ -287,22 +286,45 @@ public class ImageStorageService {
      * свойство приходит строкой из конфигурации, и молчаливая подстановка
      * нуля обрекла бы файл любого размера без предупреждения.
      *
+     * <p>Неизвестный суффикс (например, {@code TB} или несуществующий)
+     * выбрасывает {@link IllegalArgumentException}, чтобы не принять
+     * конфигурацию с неверной единицей измерения.
+     *
+     * /**
+     * Разбирает размер вида {@code 5MB} в байты.
+     *
+     * <p>Разбирается вручную, а не через {@code DataSize}, потому что
+     * свойство приходит строкой из конфигурации, и молчаливая подстановка
+     * нуля обрекла бы файл любого размера без предупреждения.
+     *
      * @param size размер с суффиксом единицы
-     * @return размер в байтах; при неразобранном значении — 1 МБ
+     * @return размер в байтах
+     * @throws ImageUploadException если формат размера некорректен
      */
     private long parseSize(String size) {
         if (size == null || size.isBlank()) {
             return 1024L * 1024L;
         }
         String trimmed = size.trim().toUpperCase(Locale.ROOT);
+        if (trimmed.contains(".") || trimmed.contains(",")) {
+            throw new ImageUploadException("Неподдерживаемый формат размера: '" + size
+                    + "'. Ожидается целое число с суффиксом (например, 5MB, 10KB, 2GB).");
+        }
         long multiplier =
                 switch (trimmed.substring(Math.max(0, trimmed.length() - 2))) {
                     case "KB" -> 1024L;
+                    case "MB" -> 1024L * 1024L;
                     case "GB" -> 1024L * 1024L * 1024L;
-                    default -> 1024L * 1024L;
+                    default ->
+                        throw new ImageUploadException(
+                                "Неподдерживаемый суффикс размера: '" + size + "'. Ожидается KB, MB или GB.");
                 };
         String digits = trimmed.replaceAll("[^0-9]", "");
-        return digits.isEmpty() ? multiplier : Long.parseLong(digits) * multiplier;
+        if (digits.isEmpty()) {
+            throw new ImageUploadException("Неподдерживаемый формат размера: '" + size
+                    + "'. Ожидается целое число с суффиксом (например, 5MB, 10KB, 2GB).");
+        }
+        return Long.parseLong(digits) * multiplier;
     }
 
     /**
@@ -318,15 +340,22 @@ public class ImageStorageService {
      * @return содержимое файла
      */
     private Mono<byte[]> readBytes(FilePart image) {
-        return DataBufferUtils.join(image.content()).map(buffer -> {
-            try {
-                byte[] bytes = new byte[buffer.readableByteCount()];
-                buffer.read(bytes);
-                return bytes;
-            } finally {
-                DataBufferUtils.release(buffer);
-            }
-        });
+        return DataBufferUtils.join(image.content())
+                .map(buffer -> {
+                    try {
+                        byte[] bytes = new byte[buffer.readableByteCount()];
+                        buffer.read(bytes);
+                        return bytes;
+                    } finally {
+                        DataBufferUtils.release(buffer);
+                    }
+                })
+                .onErrorResume(
+                        DataBufferLimitException.class,
+                        ex -> Mono.error(
+                                new ImageUploadException("Файл слишком большой: превышен лимит буфера кодеков")))
+                .onErrorResume(
+                        IllegalArgumentException.class, ex -> Mono.error(new ImageUploadException(ex.getMessage())));
     }
 
     /**

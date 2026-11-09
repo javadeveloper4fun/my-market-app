@@ -22,8 +22,10 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
  * {@code relation "items" does not exist}.
  *
  * <p>Объявление бина вручную снимает проблему: условие
- * {@code LiquibaseDataSourceCondition} проверяет наличие бина {@code DataSource}
- * по типу, а не по имени, поэтому миграции начинают выполняться на старте.
+ * {@code LiquibaseDataSourceCondition} ищет бин {@code DataSource} по имени
+ * — сначала {@code liquibaseDataSource}, затем {@code dataSource}.
+ * Объявив бин вручную, мы попадаем во вторую ветку условия,
+ * и миграции начинают выполняться на старте.
  *
  * <p>Данные подключения берутся из {@link JdbcConnectionDetails}, если такой бин
  * есть, и только затем — из свойств {@code spring.datasource.*}. Порядок не

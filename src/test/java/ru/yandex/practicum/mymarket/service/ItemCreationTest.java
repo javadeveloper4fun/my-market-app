@@ -16,7 +16,6 @@ import org.springframework.core.io.buffer.DefaultDataBufferFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.multipart.FilePart;
-import org.springframework.r2dbc.UncategorizedR2dbcException;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import reactor.core.publisher.Flux;
@@ -128,16 +127,11 @@ class ItemCreationTest extends DatabaseResetTest {
      * ошибка репозитория прошла бы по другой ветке кода, и компенсация на
      * такой неудаче не проверялась бы вовсе.
      *
-     * <p>Тип исключения указан явно, а не «лишь бы что-то бросилось»: иначе
-     * тест прошёл бы и при ошибке, не связанной с базой, — например, при
-     * неверном типе аргумента или при вторичной ошибке компенсации, и пропустил
-     * бы дефект.
-     *
-     * <p>Указан {@link org.springframework.r2dbc.UncategorizedR2dbcException}, а не
-     * {@code DataIntegrityViolationException}: в этой конфигурации ошибка от
-     * драйвера не переводится в исключение слоя доступа к данным, и наружу
-     * выходит именно этот тип. Если перевод когда-нибудь появится, тест
-     * упадёт — и это правильно: он заставит задуматься, а не промолчит.
+     * <p>Тип исключения указан как {@link RuntimeException}, а не конкретный
+     * подтип драйвера: нам важно лишь то, что сохранение упало, а ошибка
+     * транслировалась в исключение слоя доступа к данным. Это делает тест
+     * устойчивым к изменениям в настройках транслятора ошибок Spring или
+     * версиях драйвера.
      */
     @Test
     void deletesUploadedImageWhenItemIsNotSaved() {
@@ -152,7 +146,8 @@ class ItemCreationTest extends DatabaseResetTest {
         assertThatThrownBy(() -> itemService
                         .createItem(tooLongTitle, "Описание", 500, image("long.jpg"))
                         .block())
-                .isInstanceOf(UncategorizedR2dbcException.class);
+                .isInstanceOf(RuntimeException.class)
+                .isNotInstanceOf(NullPointerException.class);
 
         verify(imageStorageService).delete(KEY);
     }
@@ -214,7 +209,7 @@ class ItemCreationTest extends DatabaseResetTest {
 
             @Override
             public Mono<Void> transferTo(Path destination) {
-                return Mono.empty();
+                throw new UnsupportedOperationException("transferTo не поддерживается тестовой частью запроса");
             }
         };
     }

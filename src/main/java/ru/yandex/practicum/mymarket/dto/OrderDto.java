@@ -15,7 +15,10 @@ import ru.yandex.practicum.mymarket.model.OrderItem;
  * <p>Цена позиции и сумма заказа проходят усечение до целых рублей через
  * {@code BigDecimal.longValue()}: {@code 999.99 → 999}. Это осознанное
  * упрощение, зафиксированное тестами {@code getItemTruncatesFractionalPriceToWholeRubles}
- * и {@code keepsCentsInSnapshotButTruncatesThemInDto}.
+ * и {@code keepsCentsInSnapshotButTruncatesThemInDto}. При суммировании
+ * множества позиций усечение каждой может привести к расхождению с суммой
+ * точных цен: например, два товара по {@code 999.99} дадут {@code 1998}
+ * вместо {@code 1999.98}.
  *
  * @param id       идентификатор заказа
  * @param items    позиции заказа

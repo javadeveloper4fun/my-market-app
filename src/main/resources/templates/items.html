@@ -53,7 +53,7 @@
         </div>
         <div class="row p-2" th:each="itemsRow : ${items}">
             <div class="col" th:each="item : ${itemsRow}">
-                <div class="card" th:if="${item.id() != -1}">
+                <div class="card" th:if="${item.id() != placeholderId}">
                     <a th:href="${'/items/'+item.id()}">
                         <img th:src="${'/'+item.imgPath()}" class="card-img-top" th:alt="${item.title()}">
                     </a>
@@ -77,7 +77,7 @@
                         </form>
                     </div>
                 </div>
-                <div th:unless="${item.id() != -1}">&nbsp;</div>
+                <div th:unless="${item.id() != placeholderId}">&nbsp;</div>
             </div>
         </div>
         <div class="row p-2">

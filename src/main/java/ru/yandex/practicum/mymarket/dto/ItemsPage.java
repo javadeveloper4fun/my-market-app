@@ -21,7 +21,7 @@ public record ItemsPage(List<List<ItemDto>> rows, String search, String sort, Pa
         for (int i = 0; i < items.size(); i += 3) {
             List<ItemDto> row = new ArrayList<>(items.subList(i, Math.min(i + 3, items.size())));
             while (row.size() < 3) {
-                row.add(new ItemDto(-1, "", "", "", 0, 0));
+                row.add(new ItemDto(ItemDto.PLACEHOLDER_ID, "", "", "", 0, 0));
             }
             rows.add(row);
         }

@@ -6,7 +6,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import ru.yandex.practicum.mymarket.dto.InvalidItemFormException;
 import ru.yandex.practicum.mymarket.service.ImageUploadException;
 
@@ -35,13 +34,17 @@ import ru.yandex.practicum.mymarket.service.ImageUploadException;
  * <p>На WebFlux {@link org.springframework.web.method.annotation.MethodArgumentTypeMismatchException}
  * намеренно не обрабатывается: отказ конвертации приходит как
  * {@link IllegalArgumentException} и ловится {@link #handleIllegalArgument}.
+ *
+ * <p>На WebFlux {@link org.springframework.web.multipart.MaxUploadSizeExceededException}
+ * тоже не обрабатывается: это исключение сервлетного стека, а превышение
+ * {@code spring.webflux.multipart.max-in-memory-size} приходит как
+ * {@link org.springframework.core.io.buffer.DataBufferLimitException} и
+ * ловится в {@link ImageStorageService#readBytes}.
  */
 @ControllerAdvice
 public class GlobalExceptionHandler {
 
     private static final Logger LOG = LoggerFactory.getLogger(GlobalExceptionHandler.class);
-
-    private static final String MAX_UPLOAD_SIZE_MESSAGE = "Файл слишком большой. Превышен допустимый размер загрузки.";
 
     /**
      * Возвращает 400 при некорректном аргументе, переданном в метод контроллера.
@@ -91,23 +94,5 @@ public class GlobalExceptionHandler {
     public ResponseEntity<String> handleImageUpload(ImageUploadException e) {
         LOG.warn("Картинка товара не принята: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-    }
-
-    /**
-     * Возвращает 400, когда запрос превышает допустимый размер файла.
-     *
-     * <p>Размер задан настройкой {@code spring.servlet.multipart.max-file-size}.
-     * Файл большего размера отбрасывается при разборе запроса, до контроллера,
-     * и его отказ приходит с типом, который ни один из обработчиков
-     * контроллеров не ловит. Без этого обработчика пользователь получил бы 500
-     * на действие, которое он может исправить сам.
-     *
-     * @param e исключение разбора запроса с превышенным размером
-     * @return ответ со статусом 400 и текстом причины
-     */
-    @ExceptionHandler(MaxUploadSizeExceededException.class)
-    public ResponseEntity<String> handleMaxUploadSize(MaxUploadSizeExceededException e) {
-        LOG.warn("Файл превышает допустимый размер: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(MAX_UPLOAD_SIZE_MESSAGE);
     }
 }

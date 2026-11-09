@@ -115,6 +115,12 @@ public class OrderService {
                     }
                     return snapshot(cartItems).flatMap(this::saveOrderWithItems);
                 })
+                // deleteAll() без WHERE — это «удалить всё из корзины». В однопользовательском
+                // учебном приложении это приемлемо: между snapshot() и deleteAll() никто
+                // другого не добавит товар. В боевом приложении с конкурентным доступом
+                // здесь бы нужен locking или удаление по конкретным идентификаторам,
+                // иначе позиция, добавленная между snapshot и deleteAll(), исчезнет без
+                // попадания в заказ.
                 .flatMap(orderId -> cartItemRepository.deleteAll().thenReturn(orderId));
     }
 

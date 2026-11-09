@@ -130,6 +130,8 @@ services:
     # Наивный обход через curl с --data-binary молча не работает: хранилище
     # отвечает 500, и выглядит это как «хранилище сломано», а не как
     # «запрос не подписан».
+    # В цикле ожидания ниже используется wget: curl не гарантирован в образе
+    # amazon/aws-cli.
     image: amazon/aws-cli:2.31.11
     container_name: my-market-app-s3mock-seed
     restart: "no"
@@ -154,7 +156,7 @@ services:
         # Ждём готовности хранилища. compose не ждёт его готовности,
         # а сетевой запрос может прийти раньше, чем откроется порт.
         for i in $$(seq 1 30); do
-          if curl -s -o /dev/null -I "http://market-s3mock:9090/market-images"; then break; fi
+          if wget -q -O /dev/null "http://market-s3mock:9090/market-images"; then break; fi
           sleep 1
         done
         for file in /seed/*; do
