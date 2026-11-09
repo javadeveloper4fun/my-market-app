@@ -10,6 +10,14 @@ import ru.yandex.practicum.mymarket.dto.CartPage;
 import ru.yandex.practicum.mymarket.service.Action;
 import ru.yandex.practicum.mymarket.service.CartService;
 
+/**
+ * Корзина покупателя: отображение и изменение количества позиций.
+ *
+ * <p>Контроллер возвращает {@link Mono} с именем шаблона Thymeleaf, а не готовую
+ * страницу: цепочка подписывается при отправке ответа, и поток не занимается в
+ * ожидании базы. Работа с корзиной перенесена из спринта 5 на реактивный стек
+ * спринта 6 (WebFlux + Spring Data R2DBC).
+ */
 @Controller
 public class CartController {
 

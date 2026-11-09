@@ -94,8 +94,16 @@ public class ItemService {
             total = itemRepository.count();
         }
 
+        // collectList() материализует страницу: zipWith ниже должен получить
+        // готовый список, а не поток, который ещё может отдавать элементы.
         return page.collectList()
+                // zipWith ждёт оба источника — список товаров и total — и отдаёт
+                // пару. Это аналог CompletableFuture.allOf, но без блокировки
+                // потока: подписка на оба запроса происходит внутри Reactor.
                 .zipWith(total)
+                // Только после обеих выборок можно дописать количество в корзине
+                // и собрать ItemsPage. До подписки на возвращённый Mono ни один
+                // из запросов ещё не выполнен.
                 .flatMap(pair -> withCartCounts(
                         pair.getT1(), pair.getT2(), searchForView, normalizedSort, normalizedPageNumber, pageLimit));
     }
@@ -107,13 +115,24 @@ public class ItemService {
      * @return карточка товара
      */
     public Mono<ItemDto> getItem(long id) {
+        // Mono ленив: запрос уйдёт в базу только при подписке на результат.
         return itemRepository
                 .findById(id)
+                // Пустой Mono означает «товара нет», но для карточки это ошибка.
+                // switchIfEmpty превращает пустоту в ItemNotFoundException,
+                // иначе контроллер получил бы пустой ответ вместо 404.
                 .switchIfEmpty(Mono.error(() -> new ItemNotFoundException(id)))
+                // Товар найден; теперь читаем его позицию в корзине. flatMap
+                // нужен потому, что следующий шаг тоже асинхронный.
                 .flatMap(item -> cartItemRepository
                         .findByItemId(id)
+                        // Дальше нужен только счётчик, а не вся сущность CartItem.
                         .map(CartItem::getCount)
+                        // Позиции в корзине может не быть — это 0, а не пустой
+                        // результат: карточка товара всё равно должна отрисоваться.
                         .defaultIfEmpty(0)
+                        // Собираем DTO из товара и количества; это последний
+                        // шаг цепочки, подписку сделает вызывающий код.
                         .map(count -> ItemDto.fromEntity(item, count)));
     }
 

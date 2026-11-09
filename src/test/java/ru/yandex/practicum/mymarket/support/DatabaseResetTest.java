@@ -49,18 +49,40 @@ import org.springframework.r2dbc.core.DatabaseClient;
 public abstract class DatabaseResetTest {
 
     /**
-     * Операторы очистки в порядке, обратном зависимостям: позиции заказа ссылаются
-     * на заказы и товары, поэтому их нужно удалять первыми.
+     * Возвращает SQL-операторы очистки и сброса счётчиков для H2.
+     *
+     * @return список операторов очистки
      */
-    private static final List<String> RESET_STATEMENTS = List.of(
-            "DELETE FROM order_item",
-            "DELETE FROM cart_item",
-            "DELETE FROM orders",
-            "DELETE FROM items",
-            "ALTER TABLE order_item ALTER COLUMN id RESTART WITH 1",
-            "ALTER TABLE cart_item ALTER COLUMN id RESTART WITH 1",
-            "ALTER TABLE orders ALTER COLUMN id RESTART WITH 1",
-            "ALTER TABLE items ALTER COLUMN id RESTART WITH 1");
+    protected List<String> resetStatements() {
+        return List.of(
+                "DELETE FROM order_item",
+                "DELETE FROM cart_item",
+                "DELETE FROM orders",
+                "DELETE FROM items",
+                "ALTER TABLE order_item ALTER COLUMN id RESTART WITH 1",
+                "ALTER TABLE cart_item ALTER COLUMN id RESTART WITH 1",
+                "ALTER TABLE orders ALTER COLUMN id RESTART WITH 1",
+                "ALTER TABLE items ALTER COLUMN id RESTART WITH 1");
+    }
+
+    /**
+     * Возвращает SQL-операторы очистки и сброса счётчиков для PostgreSQL.
+     * Использует ALTER SEQUENCE, так как ALTER TABLE ... RESTART WITH
+     * не поддерживается PostgreSQL.
+     *
+     * @return список операторов очистки для PostgreSQL
+     */
+    protected List<String> postgreSqlResetStatements() {
+        return List.of(
+                "DELETE FROM order_item",
+                "DELETE FROM cart_item",
+                "DELETE FROM orders",
+                "DELETE FROM items",
+                "ALTER SEQUENCE order_item_id_seq RESTART WITH 1",
+                "ALTER SEQUENCE cart_item_id_seq RESTART WITH 1",
+                "ALTER SEQUENCE orders_id_seq RESTART WITH 1",
+                "ALTER SEQUENCE items_id_seq RESTART WITH 1");
+    }
 
     @Autowired
     protected DatabaseClient databaseClient;
@@ -70,7 +92,7 @@ public abstract class DatabaseResetTest {
      */
     @BeforeEach
     void clearDatabase() {
-        for (String statement : RESET_STATEMENTS) {
+        for (String statement : resetStatements()) {
             databaseClient.sql(statement).then().block();
         }
     }

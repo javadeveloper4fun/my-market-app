@@ -68,6 +68,11 @@ class ItemRepositoryPostgreSqlTest extends DatabaseResetTest {
         }
     }
 
+    @Override
+    protected List<String> resetStatements() {
+        return postgreSqlResetStatements();
+    }
+
     /**
      * Проверяет, что цена сохраняется с точностью до копеек.
      *

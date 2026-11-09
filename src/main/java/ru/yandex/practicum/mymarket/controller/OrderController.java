@@ -12,6 +12,15 @@ import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.service.EmptyCartException;
 import ru.yandex.practicum.mymarket.service.OrderService;
 
+/**
+ * Заказы покупателя: список заказов, карточка заказа и оформление.
+ *
+ * <p>Контроллер возвращает {@link Mono} с именем шаблона Thymeleaf, а не готовую
+ * страницу. Оформление заказа ({@code /buy}) выполняется в транзакции R2DBC:
+ * создание заказа, сохранение позиций и очистка корзины должны выполниться одной
+ * транзакцией, иначе возможна покупка без заказа или товар в корзине после
+ * покупки. Тема спринта 6 «Заказы и оформление покупки».
+ */
 @Controller
 public class OrderController {
 

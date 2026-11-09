@@ -87,7 +87,7 @@ class OrderControllerTest {
                 .expectStatus()
                 .isOk()
                 .expectBody(String.class)
-                .value(html -> assertThat(html).doesNotContain("Заказ оформлен"));
+                .value(html -> assertThat(html).doesNotContain("Поздравляем"));
     }
 
     /**
