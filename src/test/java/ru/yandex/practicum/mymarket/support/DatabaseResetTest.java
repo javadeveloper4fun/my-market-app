@@ -67,8 +67,9 @@ public abstract class DatabaseResetTest {
 
     /**
      * Возвращает SQL-операторы очистки и сброса счётчиков для PostgreSQL.
-     * Использует ALTER SEQUENCE, так как ALTER TABLE ... RESTART WITH
-     * не поддерживается PostgreSQL.
+     * Использует ALTER SEQUENCE, так как PostgreSQL не поддерживает
+     * ALTER TABLE ... ALTER COLUMN ... RESTART WITH (это H2-синтаксис);
+     * для SERIAL/BIGSERIAL-счётчиков нужен ALTER SEQUENCE ... RESTART WITH.
      *
      * @return список операторов очистки для PostgreSQL
      */

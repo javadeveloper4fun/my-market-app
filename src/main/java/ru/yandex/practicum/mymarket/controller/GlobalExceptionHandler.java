@@ -31,6 +31,10 @@ import ru.yandex.practicum.mymarket.service.ImageUploadException;
  * найден вовсе — в этом случае отдаётся дефолтная страница Spring.
  * Обработчик отвечал бы пустым телом: страницу с ошибкой он всё равно не
  * отрисовал бы, а посетитель получил бы пустую страницу вместо объяснения.
+ *
+ * <p>На WebFlux {@link org.springframework.web.method.annotation.MethodArgumentTypeMismatchException}
+ * намеренно не обрабатывается: отказ конвертации приходит как
+ * {@link IllegalArgumentException} и ловится {@link #handleIllegalArgument}.
  */
 @ControllerAdvice
 public class GlobalExceptionHandler {
