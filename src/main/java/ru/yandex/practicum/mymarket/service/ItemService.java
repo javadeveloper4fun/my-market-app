@@ -142,13 +142,20 @@ public class ItemService {
      * <p>Картинка обязательна: пустую ссылку витрина не рисует, и товар без
      * неё был бы битой карточкой.
      *
+     * <p>Загрузка картинки в S3 выполняется <em>вне</em> транзакции БД: сетевой
+     * вызов к хранилищу удерживал бы соединение с БД открытым на всё время
+     * загрузки, что непозволительно в событийном цикле WebFlux. Сначала
+     * картинка кладётся в хранилище, затем полученный ключ передаёт в
+     * {@link #saveWithImage(String, String, long, String)}, который уже работает
+     * внутри {@code @Transactional}.
+     *
      * @param title       название товара
      * @param description описание товара
      * @param price       цена в рублях
      * @param image       загружаемая картинка
      * @return созданный товар; количество в корзине равно нулю
+     * @see #saveWithImage(String, String, long, String)
      */
-    @Transactional
     public Mono<ItemDto> createItem(String title, String description, long price, FilePart image) {
         // Тема 3/11, урок 1/3 «Спецификация Reactive Streams». Обратите внимание
         // на форму метода: несколько асинхронных шагов (загрузка в хранилище,
@@ -164,29 +171,50 @@ public class ItemService {
         // Сначала картинка кладётся в хранилище, потом товар вставляется в базу.
         // Обратный порядок опаснее: если вставка не пройдёт, товара в базе не
         // будет, а объект в хранилище уже будет, и удалять его придётся отдельно.
-        return imageStorageService
-                .upload(image)
-                .flatMap(key -> itemRepository
-                        .save(new Item(title, description, IMAGE_PATH_PREFIX + key, BigDecimal.valueOf(price)))
-                        // Тема 2/11, п. «Обработка ошибок» и «Устойчивость»:
-                        // onErrorResume перехватывает отказ базы, выполняет
-                        // компенсирующее действие и возвращает исходную ошибку
-                        // наружу — система продолжает работать, а не роняет запрос.
-                        //
-                        // Это компенсация, а не откат: хранилище о транзакции базы
-                        // не знает и откатиться вместе с ней не может. Из двух
-                        // возможных остатков — лишний объект в хранилище или товар
-                        // со ссылкой на несуществующую картинку — хуже первый:
-                        // он никому не виден. Неудача удаления только логируется,
-                        // чтобы не замаскировать исходную ошибку.
-                        .onErrorResume(error -> imageStorageService.delete(key).then(Mono.error(error)))
-                        .flatMap(saved -> cartItemRepository
-                                .findByItemId(saved.getId())
-                                .map(CartItem::getCount)
-                                // Товара в корзине нет — это 0, а не пустой результат:
-                                // карточка товара всё равно должна отрисоваться.
-                                .defaultIfEmpty(0)
-                                .map(count -> ItemDto.fromEntity(saved, count))));
+        return imageStorageService.upload(image).flatMap(key -> saveWithImage(title, description, price, key));
+    }
+
+    /**
+     * Сохраняет товар в БД с уже полученным ключом картинки внутри транзакции.
+     *
+     * <p>Транзакция открывается только на операцию записи в базу. Загрузка в S3
+     * уже выполнена до вызова этого метода, поэтому соединение с БД не удерживается
+     * во время сетевого вызова к хранилищу.
+     *
+     * <p>Тема 4/11 «Автоконфигурация и тестирование Spring WebFlux», урок 1/4:
+     * {@code @Transactional} на реактивном стеке работает через
+     * {@code R2dbcTransactionManager} — транзакция открывается при подписке на
+     * возвращённый {@code Mono} и закрывается по его завершении.
+     *
+     * @param title       название товара
+     * @param description описание товара
+     * @param price       цена в рублях
+     * @param key         ключ уже загруженной в S3 картинки
+     * @return созданный товар; количество в корзине равно нулю
+     */
+    @Transactional
+    public Mono<ItemDto> saveWithImage(String title, String description, long price, String key) {
+        return itemRepository
+                .save(new Item(title, description, IMAGE_PATH_PREFIX + key, BigDecimal.valueOf(price)))
+                // Тема 2/11, п. «Обработка ошибок» и «Устойчивость»:
+                // onErrorResume перехватывает отказ базы, выполняет
+                // компенсирующее действие и возвращает исходную ошибку
+                // наружу — система продолжает работать, а не роняет запрос.
+                //
+                // Это компенсация, а не откат: хранилище о транзакции базы
+                // не знает и откатиться вместе с ней не может. Из двух
+                // возможных остатков — лишний объект в хранилище или товар
+                // со ссылкой на несуществующую картинку — хуже первый:
+                // он никому не виден. Неудача удаления только логируется,
+                // чтобы не замаскировать исходную ошибку.
+                .onErrorResume(error -> imageStorageService.delete(key).then(Mono.error(error)))
+                .flatMap(saved -> cartItemRepository
+                        .findByItemId(saved.getId())
+                        .map(CartItem::getCount)
+                        // Товара в корзине нет — это 0, а не пустой результат:
+                        // карточка товара всё равно должна отрисоваться.
+                        .defaultIfEmpty(0)
+                        .map(count -> ItemDto.fromEntity(saved, count)));
     }
 
     /**
