@@ -21,9 +21,9 @@ import ru.yandex.practicum.mymarket.service.ImageUploadException;
  * добавления товара без этого давали 500 — незаполненная цена
  * распаковывалась из обёртки в примитив и роняла запрос.
  *
- * <p>Отсутствие товара или заказа здесь не разбирается намеренно. Статус 404 задан
- * на самих исключениях через {@code @ResponseStatus}, и ответ уходит в штатную
- * обработку ошибок Spring, которая отрисовывает {@code templates/error/error.html}.
+ * <p>Отсутствие товара или заказа обрабатывается через {@code @ResponseStatus} на
+ * самих исключениях — статус 404 и рендеринг страницы ошибки {@code error.html}.
+ * Обработчик здесь не нужен: Spring сам рендерит вид, а не отдаёт пустое тело.
  * Имя каталога с {@code error} внутри не опечатка: в Spring Boot 4 обработчик
  * ошибок ищет вид по именам {@code error/<статус>}, {@code error/<серия>} и
  * {@code error/error}, и шаблон с плоским именем {@code error.html} не будет
@@ -53,12 +53,18 @@ public class GlobalExceptionHandler {
      * отдавали 404, любая настоящая ошибка в аргументе тоже превращалась в 404 и выглядела
      * как успешный запрос к отсутствующему ресурсу.
      *
+     * <p>Ловит только ожидаемые ошибки конвертации аргументов (например, нечисловой
+     * {@code id} в {@code @PathVariable}): на WebFlux {@link org.springframework.web.method.annotation.MethodArgumentTypeMismatchException}
+     * не бросается, отказ конвертации приходит как {@link IllegalArgumentException}.
+     * Неожиданные внутренние ошибки здесь не ловятся — они уходят в стандартный
+     * обработчик ошибок Spring Boot, который отдаёт 500 и рендерит {@code error.html}.
+     *
      * @param e исключение некорректного аргумента
      * @return ответ со статусом 400
      */
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Void> handleIllegalArgument(IllegalArgumentException e) {
-        LOG.warn("Некорректный аргумент запроса: {}", e.getMessage());
+        LOG.error("Некорректный аргумент запроса: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
     }
 
