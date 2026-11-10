@@ -93,6 +93,34 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js" integrity="sha384-I7E8VVD/ismYTF4hNIPjVp/Zjvgyol6VFvRkX/vR+Vc4jQkC+hVqc2pM8ODewa9r" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.min.js" integrity="sha384-G/EV+4j2dNv+tEPo3++6LCgdCROaejBqfUeNjuKAiuXbjrxilcCdDz6ZAVfHWe1Y" crossorigin="anonymous"></script>
+
+    <script>
+        // Перехватывает сабмит формы корзины (+/—), чтобы страница не
+        // скроллилась вверх после синхронного POST-запроса. Сохраняет позицию
+        // скролла, отправляет запрос через fetch и перезагружает страницу на
+        // прежнем месте. Адрес берётся от нажатой кнопки (th:formaction), а не
+        // от action формы — у формы нет action.
+        document.querySelectorAll('form[method="post"]').forEach(form => {
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const scrollY = window.scrollY;
+                const formData = new FormData(form);
+                const submitter = e.submitter;
+                const url = new URL(submitter ? submitter.formAction : form.action, window.location.origin);
+                try {
+                    await fetch(url.toString(), {
+                        method: 'POST',
+                        body: formData,
+                        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                    });
+                } catch (err) {
+                    console.error(err);
+                }
+                window.scrollTo(0, scrollY);
+                window.location.reload();
+            });
+        });
+    </script>
 </body>
 
 </html>
