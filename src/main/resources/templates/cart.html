@@ -48,7 +48,7 @@
         </div>
         <div class="row p-2">
             <div class="col">
-                <form action="/buy" method="post" th:if="${!items.isEmpty()}">
+                <form action="/buy" method="post" th:if="${!items.isEmpty()}" class="no-ajax">
                     <div class="hstack gap-3">
                         <h2 th:text="'Итого: '+${total}+' руб.'"/>
                         <button class="btn btn-warning ms-auto">Купить</button>
@@ -70,12 +70,14 @@
         // Форма «Купить» (/buy) не перехватывается: после неё нужен обычный
         // редирект на страницу заказа, а не reload корзины.
         document.querySelectorAll('form[method="post"]').forEach(form => {
+            // Форма «Купить» (.no-ajax) не перехватывается: после неё нужен обычный
+            // редирект на страницу заказа, а не reload корзины.
+            if (form.classList.contains('no-ajax')) {
+                return;
+            }
             form.addEventListener('submit', async (e) => {
                 const submitter = e.submitter;
                 const action = submitter ? submitter.formAction : form.action;
-                if (action && action.includes('/buy')) {
-                    return;
-                }
                 e.preventDefault();
                 const scrollY = window.scrollY;
                 const formData = new FormData(form);
