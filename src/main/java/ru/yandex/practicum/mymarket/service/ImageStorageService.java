@@ -112,8 +112,8 @@ public class ImageStorageService {
         return Mono.fromCallable(() -> buildKey(image.filename()))
                 .flatMap(key -> checkSize(image).thenReturn(key))
                 .flatMap(key -> readBytes(image)
-                        .flatMap(bytes -> Mono.fromFuture(s3Client.putObject(
-                                        putRequest(key, image.filename()), AsyncRequestBody.fromBytes(bytes)))
+                        .flatMap(bytes -> Mono.fromFuture(
+                                        s3Client.putObject(putRequest(key), AsyncRequestBody.fromBytes(bytes)))
                                 .thenReturn(key)))
                 .doOnNext(key -> LOG.info("Картинка загружена в хранилище: {}", key));
     }
@@ -290,13 +290,6 @@ public class ImageStorageService {
      * выбрасывает {@link IllegalArgumentException}, чтобы не принять
      * конфигурацию с неверной единицей измерения.
      *
-     * /**
-     * Разбирает размер вида {@code 5MB} в байты.
-     *
-     * <p>Разбирается вручную, а не через {@code DataSize}, потому что
-     * свойство приходит строкой из конфигурации, и молчаливая подстановка
-     * нуля обрекла бы файл любого размера без предупреждения.
-     *
      * @param size размер с суффиксом единицы
      * @return размер в байтах
      * @throws ImageUploadException если формат размера некорректен
@@ -361,11 +354,10 @@ public class ImageStorageService {
     /**
      * Собирает запрос на запись объекта.
      *
-     * @param key      ключ объекта
-     * @param fileName имя исходного файла; используется как тип содержимого
+     * @param key ключ объекта (расширение определяет тип содержимого)
      * @return запрос на запись
      */
-    private PutObjectRequest putRequest(String key, String fileName) {
+    private PutObjectRequest putRequest(String key) {
         return PutObjectRequest.builder()
                 .bucket(properties.getBucket())
                 .key(key)
