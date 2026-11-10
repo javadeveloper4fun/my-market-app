@@ -105,8 +105,7 @@ class OrderRepositoryTest extends DatabaseResetTest {
     /**
      * Проверяет выборку идентификаторов всех заказов.
      *
-     * <p>Порядок выдачи не задан запросом, поэтому проверка не на него, а на
-     * состав: найдены ровно сохранённые идентификаторы.
+     * <p>Заказы возвращаются отсортированными по id убыванию: свежие — первыми.
      */
     @Test
     void findAllIdsReturnsSavedOrders() {
@@ -115,7 +114,7 @@ class OrderRepositoryTest extends DatabaseResetTest {
 
         List<Long> ids = orderRepository.findAllIds().collectList().block();
 
-        assertThat(ids).containsExactlyInAnyOrder(first.getId(), second.getId());
+        assertThat(ids).containsExactly(second.getId(), first.getId());
     }
 
     /**
