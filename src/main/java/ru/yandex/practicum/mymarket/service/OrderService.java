@@ -57,6 +57,10 @@ public class OrderService {
     /**
      * Возвращает все заказы.
      *
+     * <p>Заказы сортируются по идентификатору убыванию: {@code id} автоинкрементный,
+     * поэтому свежие заказы — первыми. Сортировка задаётся в
+     * {@link OrderRepository#findAllIds()} через {@code ORDER BY id DESC}.
+     *
      * @return список заказов с позициями
      */
     public Mono<List<OrderDto>> getOrders() {
