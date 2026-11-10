@@ -67,13 +67,19 @@
         // скролла, отправляет запрос через fetch и перезагружает страницу на
         // прежнем месте. Адрес берётся от нажатой кнопки (th:formaction), а не
         // от action формы — у формы корзины его нет.
+        // Форма «Купить» (/buy) не перехватывается: после неё нужен обычный
+        // редирект на страницу заказа, а не reload корзины.
         document.querySelectorAll('form[method="post"]').forEach(form => {
             form.addEventListener('submit', async (e) => {
+                const submitter = e.submitter;
+                const action = submitter ? submitter.formAction : form.action;
+                if (action && action.includes('/buy')) {
+                    return;
+                }
                 e.preventDefault();
                 const scrollY = window.scrollY;
                 const formData = new FormData(form);
-                const submitter = e.submitter;
-                const url = new URL(submitter ? submitter.formAction : form.action, window.location.origin);
+                const url = new URL(action, window.location.origin);
                 try {
                     await fetch(url.toString(), {
                         method: 'POST',
