@@ -65,13 +65,15 @@
         // Перехватывает сабмит формы корзины (+/—/корзина), чтобы страница не
         // скроллилась вверх после синхронного POST-запроса. Сохраняет позицию
         // скролла, отправляет запрос через fetch и перезагружает страницу на
-        // прежнем месте.
+        // прежнем месте. Адрес берётся от нажатой кнопки (th:formaction), а не
+        // от action формы — у формы корзины его нет.
         document.querySelectorAll('form[method="post"]').forEach(form => {
             form.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const scrollY = window.scrollY;
                 const formData = new FormData(form);
-                const url = new URL(form.action, window.location.origin);
+                const submitter = e.submitter;
+                const url = new URL(submitter ? submitter.formAction : form.action, window.location.origin);
                 try {
                     await fetch(url.toString(), {
                         method: 'POST',
