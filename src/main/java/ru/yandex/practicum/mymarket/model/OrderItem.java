@@ -1,23 +1,27 @@
 package ru.yandex.practicum.mymarket.model;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
 import java.math.BigDecimal;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.relational.core.mapping.Table;
 
 /**
- * Строка заказа: снимок товара на момент покупки (название, цена, количество).
+ * Строка заказа: товар, его количество и цена на момент покупки.
+ *
+ * <p>Идентификатор купленного товара хранится обычным полем {@code itemId}, а
+ * не ссылкой на {@link Item}: в таблице {@code order_item} нет внешнего ключа на
+ * каталог, и заказ не зависит от текущего состояния товаров.
+ *
+ * <p>{@code orderId} — обычная колонка {@code order_id} с внешним ключом на
+ * {@code orders}. Раньше связь выражалась через {@code @MappedCollection} на
+ * {@link Order}, но R2DBC не умеет сохранять вложенные сущности, поэтому поле
+ * пришлось вернуть и заполнять вручную. Поле {@code id} остаётся пустым при
+ * вставке — его подставит база.
  */
-@Entity
+@Table("order_item")
 @NoArgsConstructor
 @Getter
 @Setter
@@ -25,44 +29,29 @@ import lombok.Setter;
 public class OrderItem {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /**
-     * Заказ, которому принадлежит строка. Это «владелец» связи ({@code @ManyToOne}),
-     * поэтому колонка {@code order_id} создаётся здесь. Обратная сторона —
-     * {@code Order.items} с {@code mappedBy = "order"}.
-     */
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "order_id", nullable = false)
-    private Order order;
+    private Long orderId;
 
-    /**
-     * Идентификатор купленного товара (снимок на момент покупки).
-     * Хранится как обычное поле, а не FK на Item — чтобы заказ
-     * не зависел от текущего состояния каталога.
-     */
-    @Column(name = "item_id", nullable = false)
     private Long itemId;
 
-    @Column(nullable = false)
     private String title;
 
-    @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal price;
 
-    @Column(nullable = false)
     private int count;
 
     /**
-     * Создаёт строку заказа с данными товара на момент покупки.
+     * Создаёт позицию заказа для товара.
      *
-     * @param itemId идентификатор купленного товара
-     * @param title название товара
-     * @param price цена товара
-     * @param count количество
+     * @param orderId идентификатор заказа, к которому относится позиция
+     * @param itemId  идентификатор купленного товара
+     * @param title   название товара
+     * @param price   цена товара
+     * @param count   количество товара
      */
-    public OrderItem(Long itemId, String title, BigDecimal price, int count) {
+    public OrderItem(Long orderId, Long itemId, String title, BigDecimal price, int count) {
+        this.orderId = orderId;
         this.itemId = itemId;
         this.title = title;
         this.price = price;

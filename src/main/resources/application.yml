@@ -2,14 +2,19 @@ spring:
   application:
     name: my-market-app
 
+  # Спринт 6 — реактивный доступ к данным.
+  # Приложение ходит в БД через R2DBC, у него свой адрес и свой набор
+  # переменных окружения. Он отличается от JDBC-адреса префиксом r2dbc:postgresql
+  # и без параметра jdbc:.
+  r2dbc:
+    url: ${SPRING_R2DBC_URL:r2dbc:postgresql://localhost:5439/market}
+    username: ${SPRING_R2DBC_USERNAME:market}
+    password: ${SPRING_R2DBC_PASSWORD:market}
+
+  # DataSource нужен только Liquibase: миграции выполняются через JDBC
+  # до старта приложения, до появления ConnectionFactory. Само приложение
+  # этот пул не использует.
   datasource:
-    # Спринт 5, Тема 2, Урок 1 — DataSource (фабрика подключений).
-    # Общие параметры любой реализации DataSource. По умолчанию — Hikari (пул, 10 соединений).
-    # Персистентная БД — PostgreSQL (см. docker-compose.yml).
-    # Значения переопределяются переменными окружения при запуске
-    # в Docker: SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME,
-    # SPRING_DATASOURCE_PASSWORD. По умолчанию — локальный PostgreSQL,
-    # доступный по адресу localhost:5439.
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5439/market}
     username: ${SPRING_DATASOURCE_USERNAME:market}
     password: ${SPRING_DATASOURCE_PASSWORD:market}
@@ -23,26 +28,35 @@ spring:
     change-log: classpath:db/changelog/db.changelog-master.yaml
     # Спринт 5, Тема 4, Урок 2 — целевая схема для всех changeset'ов.
     # Без этой настройки Liquibase берёт имя схемы из метаданных подключения,
-    # то есть из схемы пользователя по умолчанию. Указание явно делает целевую
-    # схему частью конфигурации, а не побочным эффектом учётных данных.
-    # Тестовый профиль не переопределяет параметр, поэтому настройка
-    # действует и на H2: в режиме MODE=PostgreSQL схема называется PUBLIC.
+    # то есть из схемы пользователя по умолчанию. Тестовый профиль параметр
+    # не переопределяет, поэтому настройка действует и на H2: в режиме
+    # MODE=PostgreSQL схема называется PUBLIC.
     default-schema: public
 
-  jpa:
-    # Отключаем привязку EntityManager к запросу (OSIV), чтобы сессия
-    # не удерживалась до конца HTTP-запроса.
-    open-in-view: false
-    properties:
-      hibernate:
-        # Режим validate — сверяет схему БД с сущностями, ничего не меняет.
-        # Раньше здесь был create: он пересоздавал таблицы при каждом старте
-        # и уничтожал данные, поэтому данные приходилось хранить в data.sql
-        # и накатывать заново при каждом запуске.
-        # Теперь схему и стартовые данные создаёт Liquibase,
-        # а Hibernate лишь проверяет, что changelog совпадает с сущностями.
-        hbm2ddl:
-          auto: validate
+  webflux:
+    multipart:
+      # Предельный размер запроса с картинкой. Ключ webflux, а не servlet:
+      # сервлета в проекте нет, и настройка под ним просто не применялась бы.
+      # Значение по умолчанию — 256 КБ, для фото товара этого мало, и
+      # превышение выдавало бы 500 вместо понятного ответа.
+      max-in-memory-size: 5MB
 
 server:
   port: 8080
+
+# Спринт 6, Тема 11 «Проектная работа» — хранение картинок товаров
+# в S3-совместимом хранилище. Задание требует возможности загрузки списка
+# товаров на витрину; выбранный способ — веб-интерфейс добавления с картинкой.
+market:
+  image-s3:
+    # Адрес хранилища. Локально это S3Mock из docker-compose; в среде
+    # эксплуатации подставляется настоящий S3 через переменную окружения.
+    endpoint: ${MARKET_IMAGE_S3_ENDPOINT:http://localhost:9090}
+    bucket: ${MARKET_IMAGE_S3_BUCKET:market-images}
+    region: ${MARKET_IMAGE_S3_REGION:us-east-1}
+    access-key: ${MARKET_IMAGE_S3_ACCESS_KEY:market}
+    secret-key: ${MARKET_IMAGE_S3_SECRET_KEY:market}
+    # Ограничение размера загружаемой картинки задано здесь, а не только
+    # в multipart: одно проверяет сервер отправки, другое — прикладной код,
+    # и без второй проверки файл всё равно уйдёт в хранилище.
+    max-upload-size: 5MB

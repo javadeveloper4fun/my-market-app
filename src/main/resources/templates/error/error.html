@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+
+<head>
+    <meta charset="utf-8">
+    <title>Ошибка</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css">
+</head>
+
+<body class="bg-light">
+    <div class="container p-2">
+        <div class="row p-2">
+            <div class="col">
+                <div class="hstack gap-3">
+                    <h2>
+                        <span class="badge text-bg-success">Витрина магазина</span>
+                    </h2>
+                    <a href="/orders" class="btn btn-secondary ms-auto bi bi-file-earmark-text"> Заказы</a>
+                    <a href="/cart/items" class="btn btn-secondary bi bi-cart4"> Корзина</a>
+                    <a href="/items" class="btn btn-secondary bi bi-arrow-left-square"> Главная</a>
+                </div>
+            </div>
+        </div>
+        <div class="row p-2">
+            <div class="col">
+                <div class="card">
+                    <div class="card-body">
+                        <h3 class="card-title" th:text="${status} + ' — ' + ${error}"></h3>
+                        <!--
+                            Путь показывается, чтобы было видно, каким адресом пришли:
+                            при опечатке в URL это сразу объясняет, что произошло.
+                            Атрибут path приходит от DefaultErrorAttributes.
+                        -->
+                        <p class="card-text" th:if="${path}" th:text="'Запрошенный адрес: ' + ${path}"></p>
+                        <p class="card-text">
+                            Такой страницы нет или товар, который вы искали, больше не продаётся.
+                            Вернитесь на витрину и выберите что-нибудь другое.
+                        </p>
+                        <a href="/items" class="btn btn-primary">Вернуться на витрину</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

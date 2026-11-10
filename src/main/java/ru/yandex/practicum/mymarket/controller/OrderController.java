@@ -8,10 +8,19 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import ru.yandex.practicum.mymarket.dto.OrderDto;
+import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.service.EmptyCartException;
 import ru.yandex.practicum.mymarket.service.OrderService;
 
+/**
+ * Заказы покупателя: список заказов, карточка заказа и оформление.
+ *
+ * <p>Контроллер возвращает {@link Mono} с именем шаблона Thymeleaf, а не готовую
+ * страницу. Оформление заказа ({@code /buy}) выполняется в транзакции R2DBC:
+ * создание заказа, сохранение позиций и очистка корзины должны выполниться одной
+ * транзакцией, иначе возможна покупка без заказа или товар в корзине после
+ * покупки. Тема спринта 6 «Заказы и оформление покупки».
+ */
 @Controller
 public class OrderController {
 
@@ -24,54 +33,65 @@ public class OrderController {
     }
 
     /**
-     * Отображает список всех заказов.
+     * Отдаёт страницу со списком заказов.
      *
      * @param model модель представления
      * @return имя шаблона списка заказов
      */
     @GetMapping("/orders")
-    public String getOrders(Model model) {
-        model.addAttribute("orders", orderService.getOrders());
-        return "orders";
+    public Mono<String> getOrders(Model model) {
+        return orderService
+                .getOrders()
+                .doOnNext(orders -> model.addAttribute("orders", orders))
+                .thenReturn("orders");
     }
 
     /**
-     * Отображает страницу конкретного заказа.
+     * Отдаёт страницу совершённого заказа.
      *
      * @param id       идентификатор заказа
-     * @param newOrder флаг того, что заказ только что был совершён
+     * @param newOrder признак перехода с кнопки покупки
      * @param model    модель представления
      * @return имя шаблона заказа
      */
     @GetMapping("/orders/{id}")
-    public String getOrder(@PathVariable long id, @RequestParam(defaultValue = "false") boolean newOrder, Model model) {
-        OrderDto orderDto = orderService.getOrder(id);
-        model.addAttribute("order", orderDto);
-        model.addAttribute("newOrder", newOrder);
-        return "order";
+    public Mono<String> getOrder(
+            @PathVariable long id, @RequestParam(defaultValue = "false") boolean newOrder, Model model) {
+        return orderService
+                .getOrder(id)
+                .doOnNext(order -> {
+                    model.addAttribute("order", order);
+                    model.addAttribute("newOrder", newOrder);
+                })
+                .thenReturn("order");
     }
 
     /**
-     * Оформляет заказ из текущей корзины.
+     * Оформляет заказ из корзины.
      *
      * <p>Транзакция открыта в {@code OrderService.buy()}, а не здесь: перехват
-     * исключения в контроллере происходит уже после её закрытия. Само по себе
-     * перехваченное исключение откат уже не отменило бы.
+     * ошибки происходит уже после её закрытия, поэтому откат уже не отменить.
      *
-     * <p>Ловится только {@link EmptyCartException}: пустая корзина — ожидаемое состояние,
-     * из которого делают редирект. Любая другая ошибка пробрасывается в
+     * <p>Перехватывается только {@link EmptyCartException}: пустая корзина —
+     * ожидаемое состояние, а не сбой. Любая другая ошибка пробрасывается в
      * {@code GlobalExceptionHandler}, а не растворяется в редиректе.
      *
-     * @return редирект на страницу нового заказа или в корзину (если она пуста)
+     * <p>Перехват устроен через {@code onErrorResume}, а не через
+     * {@code try-catch}. {@code EmptyCartException} доходит сюда не выброшенным
+     * на стеке вызова, а сигналом ошибки в {@code Mono}: цепочка
+     * {@code buy()} выполняется при подписке, уже после возврата из метода, и к
+     * этому моменту обычный {@code catch} в методе был бы бесполезен.
+     *
+     * @return имя шаблона заказа или редирект в корзину
      */
     @PostMapping("/buy")
-    public String buy() {
-        try {
-            long orderId = orderService.buy();
-            return "redirect:/orders/" + orderId + "?newOrder=true";
-        } catch (EmptyCartException e) {
-            LOG.warn("Попытка оформления заказа с пустой корзиной: {}", e.getMessage());
-            return "redirect:/cart/items";
-        }
+    public Mono<String> buy() {
+        return orderService
+                .buy()
+                .map(orderId -> "redirect:/orders/" + orderId + "?newOrder=true")
+                .onErrorResume(EmptyCartException.class, e -> {
+                    LOG.warn("Покупка отменена: корзина пуста: {}", e.getMessage());
+                    return Mono.just("redirect:/cart/items");
+                });
     }
 }

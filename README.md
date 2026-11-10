@@ -1,6 +1,6 @@
 # my-market-app
 
-Спринт 5: витрина интернет-магазина на Spring Boot (`Web MVC` + `Thymeleaf` + `Spring Data JPA` + `Hibernate` + `PostgreSQL`).
+Спринт 6: витрина интернет-магазина на Spring Boot (`WebFlux` + `Thymeleaf` + `Spring Data R2DBC` + `PostgreSQL`). Стек неблокирующий: поток не занимается в ожидании ответа БД.
 
 ## Возможности
 
@@ -8,6 +8,8 @@
 - карточка товара;
 - корзина: изменение количества товара, удаление из корзины;
 - оформление заказа и список заказов;
+- добавление товара через веб-интерфейс с загрузкой картинки в S3-совместимое хранилище;
+- раздача картинок приложением через маршрут `/images/**`;
 - HTML-шаблоны взяты из готового макета спринта, контракт эндпоинтов соответствует постановке (подробнее ниже).
 
 ## Требования
@@ -22,14 +24,14 @@
 ./gradlew build
 ```
 
-Команда собирает проект, прогоняет линтеры (checkstyle, spotless) и тесты (JUnit 5, Spring Boot Test, MockMvc, DataJpaTest). Готовый Executable JAR лежит в `build/libs/my-market-app-0.0.1-SNAPSHOT.jar`.
+Команда собирает проект, прогоняет линтеры (checkstyle, spotless) и тесты (JUnit 5, Spring Boot Test, WebTestClient, DataR2dbcTest). Готовый Executable JAR лежит в `build/libs/my-market-app-0.0.1-SNAPSHOT.jar`.
 
 Большая часть тестов работает на встроенной H2 в режиме `MODE=PostgreSQL`, и схему для них создаёт тот же changelog, что и основное приложение. Но `ItemRepositoryPostgreSqlTest` поднимает настоящий PostgreSQL в контейнере через Testcontainers, поэтому **для `./gradlew build` Docker необходим**. Тест запускает `postgres:17.5` — тот же образ, что и в `docker-compose.yml`, — и применяет тот же changelog, что гарантирует переносимость миграций на боевую СУБД.
 
 Без Docker пройдут только тесты на H2:
 
 ```bash
-./gradlew test --tests '*RepositoryTest' --tests '*ServiceTest' --tests '*ControllerTest' --tests '*MvcFlowIntegrationTest'
+./gradlew test --tests '*RepositoryTest' --tests '*ServiceTest' --tests '*ControllerTest' --tests '*WebFluxFlowIntegrationTest'
 ```
 
 ## Как создаётся база данных
@@ -64,6 +66,9 @@ POSTGRES_PASSWORD: market
 
 **Повторные запуски безопасны.** Liquibase хранит историю применённых changeset'ов в `DATABASECHANGELOG`, поэтому при каждом следующем старте уже применённые изменения пропускаются, а товары не дублируются.
 
+### Сброс счётчиков в тестах
+Тестовые классы очищают базу перед каждым прогоном через `DatabaseResetTest`. Для H2 счётчики сбрасываются через `ALTER TABLE ... ALTER COLUMN ... RESTART WITH 1`, а для PostgreSQL (`ItemRepositoryPostgreSqlTest`, запускается в Testcontainers) — через `ALTER SEQUENCE ... RESTART WITH 1`, потому что PostgreSQL не поддерживает H2-синтаксис сброса счётчиков.
+
 Отдельно стоит отметить, чем это отличается от прежней схемы `hbm2ddl=create`: тот режим пересоздавал таблицы при каждом старте и уничтожал накопленные данные, не оставляя никакой истории. Liquibase этого не делает.
 
 ### Если приложение падает при старте с `PreconditionFailedException`
@@ -81,7 +86,19 @@ docker compose up -d --build
 
 Для существующей базы с нужными данными этот способ не подходит: тогда требуется разовая процедура baseline — одна отметка текущего состояния как уже применённого. Она в рамках спринта не рассматривается.
 
-## Запуск локально (в среде разработки)
+## Хранилище картинок
+
+Картинки товаров лежат в S3-совместимом хранилище, а не в статических ресурсах приложения. Раздаёт их маршрут `/images/**`, поэтому адрес хранилища не попадает в HTML и может измениться без правки шаблонов.
+
+Локально хранилище — [S3Mock](https://github.com/adobe/S3Mock) из `docker-compose.yml`. MinIO не используется: образ `minio/minio` из этого окружения недоступен, а S3Mock для учебной задачи достаточно — он отвечает на подписанные запросы так же, как настоящий S3.
+
+Бакет `market-images` создаёт сам S3Mock при старте, кода инициализации в приложении нет. Картинки витрины заливает одноразовый контейнер `s3mock-seed`: он поднимается вместе со стендом и заканчивает работу. Заливка идёт через `aws-cli`, а не через `curl`, потому что S3Mock проверяет подписи запросов — неподписанный `PUT` он отклоняет.
+
+Ключ объекта строится из случайного идентификатора и расширения файла: имя, заданное пользователем, в путь объекта не попадает.
+
+В приложении используется AWS SDK v2 напрямую, без Spring Cloud AWS: тот рассчитан на Boot 3.x и вместе с ним тянул бы свою версию.
+
+## Запуск локально
 
 1. Поднять базу данных:
 
@@ -137,6 +154,9 @@ docker compose down -v
 ```bash
 docker build -t my-market-app .
 docker run -p 8080:8080 \
+  -e SPRING_R2DBC_URL=r2dbc:postgresql://<host>:5432/market \
+  -e SPRING_R2DBC_USERNAME=market \
+  -e SPRING_R2DBC_PASSWORD=market \
   -e SPRING_DATASOURCE_URL=jdbc:postgresql://<host>:5432/market \
   -e SPRING_DATASOURCE_USERNAME=market \
   -e SPRING_DATASOURCE_PASSWORD=market \
@@ -154,6 +174,12 @@ docker run -p 8080:8080 \
 - `GET /orders` — список заказов (шаблон `orders`);
 - `GET /orders/{id}` — страница заказа (шаблон `order`, флаг `newOrder`);
 - `POST /buy` — оформление заказа: редирект на `/orders/{id}?newOrder=true`.
+- `GET /items/new` — форма добавления товара (шаблон `item-new`);
+- `POST /items/new` — создание товара: поля `title`, `description`, `price` и файл `image`, редирект на `/items`;
+- `POST /images` — загрузка картинки, ответ — путь вида `images/<ключ>`;
+- `GET /images/{key}` — отдача картинки из хранилища.
+
+Параметр `sort` принимает значения `NO`, `ALPHA` или `PRICE`. Любое другое значение (включая пустую строку) неявно трактуется как `NO` — сортировка не применяется, товары выводятся в порядке вставки. Это осознанное решение: невалидный параметр не должен ломать страницу, поэтому вместо 400 он silently переходит в дефолт.
 
 `POST /items` и `POST /buy` возвращают редирект, как требует постановка; `POST /items/{id}` и `POST /cart/items` возвращают шаблон напрямую.
 
@@ -161,9 +187,10 @@ docker run -p 8080:8080 \
 
 ```
 src/main/java/ru/yandex/practicum/mymarket/
-├── controller/   # WebMVC-контроллеры
+├── config/       # конфигурация бинов: DataSource для Liquibase, клиент S3
+├── controller/   # WebFlux-контроллеры
 ├── dto/          # DTO для отображения на страницах
-├── model/        # JPA-сущности
-├── repository/   # Spring Data JPA-репозитории
-└── service/      # сервисный слой
+├── model/        # сущности, отображаемые Spring Data R2DBC
+├── repository/   # Spring Data R2DBC-репозитории
+└── service/      # сервисный слой, возвращает Mono и Flux
 ```

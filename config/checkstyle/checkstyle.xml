@@ -1,8 +1,32 @@
 <?xml version="1.0"?>
 <!DOCTYPE module PUBLIC "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
     "https://checkstyle.org/dtds/configuration_1_3.dtd">
+<!--
+    Правила разбиты на две группы: оформление имён и документации и оформление
+    самого кода.
+
+    Форматирование задаёт Spotless (palantirJavaFormat), он же переписывает
+    файлы. Checkstyle не умеет исправлять, он только проверяет, поэтому его
+    роль — не пустить нарушение дальше по конвейеру: SpotlessApply поправит
+    файл молча, а сборка с checkstyle упадёт и скажет, где именно.
+
+    Значения отступов и ширины не выбраны произвольно: они сняты с того, что
+    выдаёт palantirJavaFormat, иначе правила врали бы на каждой второй
+    строке форматирования.
+-->
 <module name="Checker">
+    <!-- Общие для всех файлов правила. -->
+    <module name="NewlineAtEndOfFile">
+        <property name="lineSeparator" value="lf"/>
+    </module>
+    <module name="FileTabCharacter"/>
+    <module name="LineLength">
+        <property name="max" value="120"/>
+        <property name="ignorePattern" value="^\s*\*.*$"/>
+    </module>
+
     <module name="TreeWalker">
+        <!-- Имена и документация. -->
         <module name="AvoidStarImport">
             <property name="allowStaticMemberImports" value="true"/>
         </module>
@@ -12,5 +36,49 @@
         <module name="JavadocVariable">
             <property name="scope" value="public"/>
         </module>
+
+        <!-- Пробелы вокруг конструкций. -->
+        <module name="WhitespaceAfter"/>
+        <module name="WhitespaceAround">
+            <property name="allowEmptyConstructors" value="true"/>
+            <property name="allowEmptyMethods" value="true"/>
+            <property name="allowEmptyTypes" value="true"/>
+            <property name="allowEmptyLambdas" value="true"/>
+            <property name="allowEmptyCatches" value="true"/>
+        </module>
+        <module name="NoWhitespaceBefore">
+            <property name="tokens"
+                      value="COMMA, SEMI, POST_INC, POST_DEC, ELLIPSIS, LABELED_STAT"/>
+        </module>
+        <module name="ParenPad"/>
+        <module name="MethodParamPad"/>
+        <module name="TypecastParenPad"/>
+        <module name="GenericWhitespace"/>
+        <module name="EmptyForIteratorPad"/>
+
+        <!-- Перенос строк. -->
+        <module name="OperatorWrap">
+            <property name="option" value="nl"/>
+        </module>
+
+        <!-- Скобки и структура. -->
+        <module name="LeftCurly"/>
+        <module name="RightCurly"/>
+        <module name="NeedBraces"/>
+        <module name="EmptyBlock">
+            <property name="option" value="text"/>
+        </module>
+        <module name="OneStatementPerLine"/>
+        <module name="MultipleVariableDeclarations"/>
+
+        <!--
+            Отступы здесь намеренно не проверяются. Их ставит palantirJavaFormat
+            через Spotless, и дублировать то же самое вторым инструментом смысла
+            нет. Проверка Indentation из checkstyle к тому же спорит с
+            форматировщиком: switch-выражение, присвоенное переменной через
+            перенос строки, форматируется с отступом 16, а правило требует 8,
+            и сборка падает на вёрстке кода, который отформатирован правильно.
+            Сдвиг отступа Spotless не пропускает, это проверено.
+        -->
     </module>
 </module>

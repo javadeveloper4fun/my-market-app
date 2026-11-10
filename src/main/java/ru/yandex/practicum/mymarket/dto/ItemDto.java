@@ -17,6 +17,10 @@ package ru.yandex.practicum.mymarket.dto;
  * @param count       количество в корзине (0 — товара нет в корзине)
  */
 public record ItemDto(long id, String title, String description, String imgPath, long price, int count) {
+
+    /** Идентификатор-заглушка для несуществующего товара при построении строк витрины. */
+    public static final long PLACEHOLDER_ID = -1L;
+
     public static ItemDto fromEntity(ru.yandex.practicum.mymarket.model.Item item, int count) {
         return new ItemDto(
                 item.getId(),

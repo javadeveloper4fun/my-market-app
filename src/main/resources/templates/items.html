@@ -20,6 +20,7 @@
                     </h2>
                     <a href="/orders" class="btn btn-secondary ms-auto bi bi-file-earmark-text"> Заказы</a>
                     <a href="/cart/items" class="btn btn-secondary bi bi-cart4"> Корзина</a>
+                    <a href="/items/new" class="btn btn-outline-success bi bi-plus-circle"> Добавить товар</a>
                 </div>
             </div>
         </div>
@@ -52,7 +53,7 @@
         </div>
         <div class="row p-2" th:each="itemsRow : ${items}">
             <div class="col" th:each="item : ${itemsRow}">
-                <div class="card" th:if="${item.id() != -1}">
+                <div class="card" th:if="${item.id() != placeholderId}">
                     <a th:href="${'/items/'+item.id()}">
                         <img th:src="${'/'+item.imgPath()}" class="card-img-top" th:alt="${item.title()}">
                     </a>
@@ -62,30 +63,29 @@
                             <span class="badge text-bg-success justify-content-end" th:text="${item.price()}+' руб.'"></span>
                         </h5>
                         <p class="card-text" th:text="${item.description()}"></p>
-                        <form method="post" th:action="@{/items}">
+                        <form method="post">
                             <div class="hstack gap-3">
-                                <input type="hidden" name="id" th:value="${item.id()}">
-                                <input type="hidden" name="search" th:value="${search}">
-                                <input type="hidden" name="sort" th:value="${sort}">
-                                <input type="hidden" name="pageSize" th:value="${paging.pageSize()}">
-                                <input type="hidden" name="pageNumber" th:value="${paging.pageNumber()}">
-                                <button type="submit" class="btn btn-outline-secondary" name="action" value="MINUS">-</button>
+                                <button type="submit" class="btn btn-outline-secondary"
+                                        th:formaction="@{/items(id=${item.id()},action='MINUS',search=${search},sort=${sort},pageSize=${paging.pageSize()},pageNumber=${paging.pageNumber()})}">-</button>
                                 <span th:text="${item.count()}"></span>
-                                <button type="submit" class="btn btn-outline-secondary" name="action" value="PLUS">+</button>
-                                <button type="submit" class="btn btn-warning ms-auto bi bi-cart4" name="action" value="PLUS" th:if="${item.count()==0}"></button>
+                                <button type="submit" class="btn btn-outline-secondary"
+                                        th:formaction="@{/items(id=${item.id()},action='PLUS',search=${search},sort=${sort},pageSize=${paging.pageSize()},pageNumber=${paging.pageNumber()})}">+</button>
+                                <button type="submit" class="btn btn-warning ms-auto bi bi-cart4"
+                                        th:formaction="@{/items(id=${item.id()},action='PLUS',search=${search},sort=${sort},pageSize=${paging.pageSize()},pageNumber=${paging.pageNumber()})}"
+                                        th:if="${item.count()==0}"></button>
                             </div>
                         </form>
                     </div>
                 </div>
-                <div th:unless="${item.id() != -1}">&nbsp;</div>
+                <div th:unless="${item.id() != placeholderId}">&nbsp;</div>
             </div>
         </div>
         <div class="row p-2">
             <div class="col">
                 <div class="hstack gap-3 justify-content-center">
-                    <button type="submit" class="btn btn-light" th:if="${paging.hasPrevious()}" name="pageNumber" th:value="${paging.pageNumber()-1}" form="main">&larr;</button>
+                    <button type="submit" class="btn btn-light" th:if="${paging.hasPrevious()}" name="pageNumber" th:value="${paging.previousPageNumber()}" form="main">&larr;</button>
                     <span th:text="${'Страница: '+paging.pageNumber()}"></span>
-                    <button type="submit" class="btn btn-light" th:if="${paging.hasNext()}" name="pageNumber" th:value="${paging.pageNumber()+1}" form="main">&rarr;</button>
+                    <button type="submit" class="btn btn-light" th:if="${paging.hasNext()}" name="pageNumber" th:value="${paging.nextPageNumber()}" form="main">&rarr;</button>
                 </div>
             </div>
         </div>
@@ -93,6 +93,34 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js" integrity="sha384-I7E8VVD/ismYTF4hNIPjVp/Zjvgyol6VFvRkX/vR+Vc4jQkC+hVqc2pM8ODewa9r" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.min.js" integrity="sha384-G/EV+4j2dNv+tEPo3++6LCgdCROaejBqfUeNjuKAiuXbjrxilcCdDz6ZAVfHWe1Y" crossorigin="anonymous"></script>
+
+    <script>
+        // Перехватывает сабмит формы корзины (+/—), чтобы страница не
+        // скроллилась вверх после синхронного POST-запроса. Сохраняет позицию
+        // скролла, отправляет запрос через fetch и перезагружает страницу на
+        // прежнем месте. Адрес берётся от нажатой кнопки (th:formaction), а не
+        // от action формы — у формы нет action.
+        document.querySelectorAll('form[method="post"]').forEach(form => {
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const scrollY = window.scrollY;
+                const formData = new FormData(form);
+                const submitter = e.submitter;
+                const url = new URL(submitter ? submitter.formAction : form.action, window.location.origin);
+                try {
+                    await fetch(url.toString(), {
+                        method: 'POST',
+                        body: formData,
+                        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                    });
+                } catch (err) {
+                    console.error(err);
+                }
+                window.scrollTo(0, scrollY);
+                window.location.reload();
+            });
+        });
+    </script>
 </body>
 
 </html>

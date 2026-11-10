@@ -2,10 +2,29 @@ spring:
   application:
     name: my-market-app
 
+  # Тесты ходят в базу через R2DBC — так же, как приложение. Параметры JDBC
+  # ниже нужны только Liquibase, и обе схемы должны вести в одну и ту же
+  # базу в памяти.
+  #
+  # Различие в написании адресов — не опечатка: R2DBC и JDBC — разные
+  # драйверы с разными префиксами (r2dbc: и jdbc:). Оба URL ведут
+  # в одну и ту же базу 'market' в памяти H2. R2DBC-драйвер H2
+  # корректно понимает «;» как разделитель параметров.
+  #
+  # CASE_INSENSITIVE_IDENTIFIERS убирает расхождения регистра имён, которых
+  # в самом приложении нет: Liquibase складывает имена без кавычек по
+  # правилам СУБД, а Spring Data заключает их в кавычки. На PostgreSQL
+  # обе стороны дают нижний регистр, на H2 без этого параметра запрос
+  # падал то на таблице, то на столбце.
+  r2dbc:
+    url: r2dbc:h2:mem:///market;DB_CLOSE_DELAY=-1;MODE=PostgreSQL;CASE_INSENSITIVE_IDENTIFIERS=TRUE
+    username: sa
+    password: ""
+
   datasource:
     # Спринт 5, Тема 2, Урок 1 — тестовый профиль: H2 вместо PostgreSQL (MODE=PostgreSQL).
     # Альтернатива для проверки поведения, близкого к проду, — Testcontainers с настоящей СУБД.
-    url: jdbc:h2:mem:market;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    url: jdbc:h2:mem:market;DB_CLOSE_DELAY=-1;MODE=PostgreSQL;CASE_INSENSITIVE_IDENTIFIERS=TRUE
     username: sa
     password: ""
 
@@ -16,13 +35,3 @@ spring:
     # стартовое наполнение витрины (context: seed). Изменения без context
     # применяются в любом случае. Тесты наполняют базу своими данными.
     contexts: test
-
-  jpa:
-    properties:
-      hibernate:
-        # Схему тестовой БД создаёт Liquibase из того же changelog,
-        # что и основной профиль, поэтому hbm2ddl=create-drop больше не нужен.
-        # validate сверяет схему с сущностями: если changelog разойдётся
-        # с @Entity, тесты упадут на старте контекста.
-        hbm2ddl:
-          auto: validate

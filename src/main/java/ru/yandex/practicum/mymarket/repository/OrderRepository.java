@@ -1,33 +1,36 @@
 package ru.yandex.practicum.mymarket.repository;
 
-import java.util.List;
-import java.util.Optional;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
+import org.springframework.data.r2dbc.repository.Query;
+import org.springframework.data.repository.reactive.ReactiveCrudRepository;
+import reactor.core.publisher.Flux;
 import ru.yandex.practicum.mymarket.model.Order;
 
 /**
- * Репозиторий заказов покупателя.
+ * Хранилище заказов покупателя.
+ *
+ * <p>Методов {@code findWithItemsById} и {@code findAllWithItems} здесь нет, и это
+ * главное отличие от блокирующей версии. Оба держались на
+ * {@code left join fetch} и {@code distinct}: join размножал строку заказа по
+ * числу позиций, а {@code distinct} это маскировал. В R2DBC join-fetch не
+ * применяется, поэтому позиции загружаются отдельно — см.
+ * {@link OrderItemRepository#findAllByOrderIdIn}.
  */
-public interface OrderRepository extends JpaRepository<Order, Long> {
+public interface OrderRepository extends ReactiveCrudRepository<Order, Long> {
 
     /**
-     * Загружает заказ вместе со строками заказа (fetch join строк).
+     * Возвращает идентификаторы всех заказов.
      *
-     * @param id идентификатор заказа
-     * @return заказ со строками (или пустой Optional)
-     */
-    @Query("select distinct o from Order o left join fetch o.items where o.id = :id")
-    Optional<Order> findWithItemsById(@Param("id") Long id);
-
-    /**
-     * Возвращает все заказы вместе с позициями.
-     * Коллекция {@code items} загружена одним {@code left join fetch} — мера
-     * производительности (один SELECT вместо N+1), а не условие корректностисуществования вызывающего кода.
+     * <p>Для списка заказов нужны только идентификаторы: всё остальное приходит
+     * из позиций. Запрашивать сущности здесь означало бы загрузить позиции на
+     * каждый заказ, то есть получить N+1.
      *
-     * @return список заказов с инициализированной коллекцией позиций
+     * <p>Сортировка по идентификатору убыванию: {@code id} автоинкрементный,
+     * поэтому свежие заказы — первыми. Без ORDER BY порядок выдачи БД
+     * неопределён, и при добавлении товара через плюс карточка может
+     * перемещаться в конец списка.
+     *
+     * @return поток идентификаторов заказов
      */
-    @Query("select distinct o from Order o left join fetch o.items")
-    List<Order> findAllWithItems();
+    @Query("SELECT id FROM orders ORDER BY id DESC")
+    Flux<Long> findAllIds();
 }

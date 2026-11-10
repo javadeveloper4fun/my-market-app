@@ -2,23 +2,33 @@ package ru.yandex.practicum.mymarket.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.math.BigDecimal;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.transaction.annotation.Transactional;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.ItemsPage;
 import ru.yandex.practicum.mymarket.model.CartItem;
 import ru.yandex.practicum.mymarket.model.Item;
 import ru.yandex.practicum.mymarket.repository.CartItemRepository;
 import ru.yandex.practicum.mymarket.repository.ItemRepository;
+import ru.yandex.practicum.mymarket.support.DatabaseResetTest;
 
+/**
+ * Тесты сервиса витрины на встроенной H2 (профиль test).
+ *
+ * <p>Изоляция тестов — через явную очистку базы вместо {@code @Transactional};
+ * почему отката на реактивном стеке не происходит, сказано в
+ * {@link DatabaseResetTest}.
+ *
+ * <p>Вызовы завершаются на {@code block()}: методы сервиса возвращают
+ * {@code Mono}, и без подписки не выполняется ни одного запроса.
+ */
 @SpringBootTest
 @ActiveProfiles("test")
-@Transactional
-class ItemServiceTest {
+class ItemServiceTest extends DatabaseResetTest {
 
     @Autowired
     private ItemService itemService;
@@ -31,14 +41,11 @@ class ItemServiceTest {
 
     @Test
     void getItemsReturnsRowsOfThreeWithSearchAndSort() {
-        Item item1 = itemRepository.save(
-                new Item("Тестовая куртка", "Зимняя", "img1.jpg", new java.math.BigDecimal("1000")));
-        Item item2 = itemRepository.save(
-                new Item("Тестовый рюкзак", "Городской", "img2.jpg", new java.math.BigDecimal("2000")));
-        Item item3 = itemRepository.save(
-                new Item("Тестовая футболка", "Летняя", "img3.jpg", new java.math.BigDecimal("3000")));
+        saveItem("Тестовая куртка", "Зимняя", "1000");
+        saveItem("Тестовый рюкзак", "Городской", "2000");
+        saveItem("Тестовая футболка", "Летняя", "3000");
 
-        ItemsPage page = itemService.getItems("Тестов", "ALPHA", 1, 10);
+        ItemsPage page = itemService.getItems("Тестов", "ALPHA", 1, 10).block();
 
         assertThat(page.rows()).hasSize(1);
         List<ItemDto> row = page.rows().get(0);
@@ -53,25 +60,29 @@ class ItemServiceTest {
 
     @Test
     void getItemsPaginatesCorrectly() {
-        itemRepository.save(new Item("Тестовая куртка", "1", "img1.jpg", new java.math.BigDecimal("1000")));
-        itemRepository.save(new Item("Тестовый рюкзак", "2", "img2.jpg", new java.math.BigDecimal("2000")));
-        itemRepository.save(new Item("Тестовая футболка", "3", "img3.jpg", new java.math.BigDecimal("3000")));
+        saveItem("Тестовая куртка", "1", "1000");
+        saveItem("Тестовый рюкзак", "2", "2000");
+        saveItem("Тестовая футболка", "3", "3000");
 
-        ItemsPage firstPage = itemService.getItems("Тестов", "NO", 1, 2);
+        ItemsPage firstPage = itemService.getItems("Тестов", "NO", 1, 2).block();
         assertThat(firstPage.rows()).hasSize(1);
         assertThat(firstPage.rows().get(0)).hasSize(3);
         assertThat(firstPage.paging().hasNext()).isTrue();
 
-        ItemsPage secondPage = itemService.getItems("Тестов", "NO", 2, 2);
+        ItemsPage secondPage = itemService.getItems("Тестов", "NO", 2, 2).block();
         assertThat(secondPage.paging().hasNext()).isFalse();
     }
 
+    /**
+     * Проверяет, что спецсимволы LIKE экранируются для репозитория и при этом
+     * исходная строка попадает в модель без изменений.
+     */
     @Test
     void getItemsKeepsRawSearchInModelAndEscapesForRepository() {
-        itemRepository.save(new Item("100% хлопок", "Куртка", "img1.jpg", new java.math.BigDecimal("1000")));
-        itemRepository.save(new Item("Куртка", "Описание", "img2.jpg", new java.math.BigDecimal("2000")));
+        saveItem("100% хлопок", "Куртка", "1000");
+        saveItem("Куртка", "Описание", "2000");
 
-        ItemsPage page = itemService.getItems("100%", "NO", 1, 10);
+        ItemsPage page = itemService.getItems("100%", "NO", 1, 10).block();
 
         assertThat(page.search()).isEqualTo("100%");
         assertThat(page.rows()).extracting(row -> row.get(0).title()).containsExactly("100% хлопок");
@@ -79,22 +90,22 @@ class ItemServiceTest {
 
     @Test
     void getItemsExposesEmptyStringInViewWhenSearchParamIsAbsentOrBlank() {
-        itemRepository.save(new Item("Тестовая куртка", "1", "img1.jpg", new java.math.BigDecimal("1000")));
+        saveItem("Тестовая куртка", "1", "1000");
 
-        ItemsPage blankPage = itemService.getItems("", "NO", 1, 10);
+        ItemsPage blankPage = itemService.getItems("", "NO", 1, 10).block();
         assertThat(blankPage.search()).isEmpty();
         assertThat(blankPage.rows()).hasSize(1);
 
-        ItemsPage absentPage = itemService.getItems(null, "NO", 1, 10);
+        ItemsPage absentPage = itemService.getItems(null, "NO", 1, 10).block();
         assertThat(absentPage.search()).isEmpty();
         assertThat(absentPage.rows()).hasSize(1);
     }
 
     @Test
     void getItemsTreatsZeroOrNegativePageNumberAsFirstPage() {
-        itemRepository.save(new Item("Тестовая куртка", "1", "img1.jpg", new java.math.BigDecimal("1000")));
+        saveItem("Тестовая куртка", "1", "1000");
 
-        ItemsPage page = itemService.getItems("Тестовая", "NO", 0, 2);
+        ItemsPage page = itemService.getItems("Тестовая", "NO", 0, 2).block();
 
         assertThat(page.paging().pageNumber()).isEqualTo(1);
         assertThat(page.paging().hasPrevious()).isFalse();
@@ -104,23 +115,21 @@ class ItemServiceTest {
     /**
      * Проверяет, что поиск отбрасывает несовпадающие товары.
      *
-     * <p>Остальные тесты используют термин, совпадающий со всеми сохранёнными товарами,
-     * поэтому проходят и при полностью отключённом поиске: страница возвращает ту же
-     * выборку. Здесь термин подходит только одному товару из трёх, а проверяется всё
-     * содержимое строки, а не её первый элемент.
+     * <p>Остальные тесты используют термин, совпадающий со всеми сохранёнными
+     * товарами, поэтому проходят и при полностью отключённом поиске. Здесь
+     * термин подходит только одному товару из трёх.
      *
-     * <p>Термин взят из описания, а не из названия, чтобы совпадение не зависело от
-     * товаров, которые тест создаёт: проверяется, что отфильтрован именно набор
-     * результатов поиска, а не наличие слова в конкретном заголовке.
+     * <p>Термин взят из описания, а не из названия, чтобы совпадение не зависело
+     * от товаров, которые тест создаёт: проверяется, что отфильтрован именно
+     * набор результатов поиска.
      */
     @Test
     void getItemsExcludesNonMatchingItemsFromRow() {
-        itemRepository.save(new Item("Тестовая куртка", "Зимняя", "img1.jpg", new java.math.BigDecimal("1000")));
-        itemRepository.save(
-                new Item("Тестовый рюкзак", "Городской рюкзак", "img2.jpg", new java.math.BigDecimal("2000")));
-        itemRepository.save(new Item("Тестовая футболка", "Летняя", "img3.jpg", new java.math.BigDecimal("3000")));
+        saveItem("Тестовая куртка", "Зимняя", "1000");
+        saveItem("Тестовый рюкзак", "Городской рюкзак", "2000");
+        saveItem("Тестовая футболка", "Летняя", "3000");
 
-        ItemsPage page = itemService.getItems("Городской", "NO", 1, 10);
+        ItemsPage page = itemService.getItems("Городской", "NO", 1, 10).block();
 
         assertThat(page.rows()).hasSize(1);
         // Строка дополняется пустыми заглушками до трёх элементов, поэтому считаем
@@ -131,11 +140,10 @@ class ItemServiceTest {
 
     @Test
     void getItemReturnsCountFromCart() {
-        Item item = itemRepository.save(
-                new Item("Тестовый товар", "Описание", "img.jpg", new java.math.BigDecimal("1500")));
-        cartItemRepository.save(new CartItem(item, 3));
+        Item item = saveItem("Тестовый товар", "Описание", "1500");
+        cartItemRepository.save(new CartItem(item.getId(), 3)).block();
 
-        ItemDto dto = itemService.getItem(item.getId());
+        ItemDto dto = itemService.getItem(item.getId()).block();
 
         assertThat(dto.id()).isEqualTo(item.getId());
         assertThat(dto.count()).isEqualTo(3);
@@ -152,13 +160,25 @@ class ItemServiceTest {
      */
     @Test
     void getItemTruncatesFractionalPriceToWholeRubles() {
-        Item item = itemRepository.save(
-                new Item("Тестовый товар", "Описание", "img.jpg", new java.math.BigDecimal("999.99")));
+        Item item = saveItem("Тестовый товар", "Описание", "999.99");
 
-        ItemDto dto = itemService.getItem(item.getId());
+        ItemDto dto = itemService.getItem(item.getId()).block();
 
         assertThat(dto.price()).isEqualTo(999L);
-        assertThat(itemRepository.findById(item.getId()).orElseThrow().getPrice())
-                .isEqualByComparingTo("999.99");
+        assertThat(itemRepository.findById(item.getId()).block().getPrice()).isEqualByComparingTo("999.99");
+    }
+
+    /**
+     * Создаёт и сохраняет товар.
+     *
+     * @param title       название
+     * @param description описание
+     * @param price       цена
+     * @return сохранённый товар
+     */
+    private Item saveItem(String title, String description, String price) {
+        return itemRepository
+                .save(new Item(title, description, "img.jpg", new BigDecimal(price)))
+                .block();
     }
 }
