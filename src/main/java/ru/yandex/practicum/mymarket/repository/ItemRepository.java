@@ -59,11 +59,16 @@ public interface ItemRepository extends ReactiveCrudRepository<Item, Long> {
     /**
      * Все товары без сортировки.
      *
+     * <p>Сортировка по идентификатору: {@code id} автоинкрементный, поэтому
+     * товары выводятся в порядке создания — свежие первыми. Без ORDER BY порядок
+     * выдачи БД неопределён, и при добавлении товара в корзину через плюс
+     * карточка может перемещаться в конец списка.
+     *
      * @param limit  максимум строк в выборке
      * @param offset сколько строк пропустить
      * @return поток товаров
      */
-    @Query("SELECT * FROM items LIMIT :limit OFFSET :offset")
+    @Query("SELECT * FROM items ORDER BY id LIMIT :limit OFFSET :offset")
     Flux<Item> findAllUnsorted(@Param("limit") long limit, @Param("offset") long offset);
 
     /**

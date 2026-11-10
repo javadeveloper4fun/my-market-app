@@ -1,6 +1,7 @@
 package ru.yandex.practicum.mymarket.repository;
 
 import java.util.Collection;
+import org.springframework.data.r2dbc.repository.Query;
 import org.springframework.data.repository.reactive.ReactiveCrudRepository;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -44,4 +45,17 @@ public interface CartItemRepository extends ReactiveCrudRepository<CartItem, Lon
      * @return поток позиций этих товаров
      */
     Flux<CartItem> findAllByItemIdIn(Collection<Long> itemIds);
+
+    /**
+     * Возвращает все позиции корзины.
+     *
+     * <p>Сортировка по идентификатору: {@code id} автоинкрементный, поэтому
+     * позиции выводятся в порядке добавления — свежие первыми. Без ORDER BY
+     * порядок выдачи БД неопределён, и при изменении количества через плюс
+     * позиция может перемещаться в конец списка.
+     *
+     * @return поток позиций корзины
+     */
+    @Query("SELECT * FROM cart_item ORDER BY id")
+    Flux<CartItem> findAllSorted();
 }

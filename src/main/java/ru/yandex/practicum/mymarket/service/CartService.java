@@ -56,7 +56,7 @@ public class CartService {
      * @return корзина со списком позиций и суммой
      */
     public Mono<CartPage> getCart() {
-        return cartItemRepository.findAll().collectList().flatMap(cartItems -> {
+        return cartItemRepository.findAllSorted().collectList().flatMap(cartItems -> {
             if (cartItems.isEmpty()) {
                 return Mono.just(new CartPage(List.of(), 0L));
             }
