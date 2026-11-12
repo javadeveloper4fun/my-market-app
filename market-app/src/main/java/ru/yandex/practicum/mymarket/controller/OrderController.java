@@ -9,6 +9,9 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import reactor.core.publisher.Mono;
+import ru.yandex.practicum.mymarket.payments.InsufficientFundsException;
+import ru.yandex.practicum.mymarket.payments.PaymentsUnavailableException;
+import ru.yandex.practicum.mymarket.service.CheckoutService;
 import ru.yandex.practicum.mymarket.service.EmptyCartException;
 import ru.yandex.practicum.mymarket.service.OrderService;
 
@@ -27,9 +30,11 @@ public class OrderController {
     private static final Logger LOG = LoggerFactory.getLogger(OrderController.class);
 
     private final OrderService orderService;
+    private final CheckoutService checkoutService;
 
-    public OrderController(OrderService orderService) {
+    public OrderController(OrderService orderService, CheckoutService checkoutService) {
         this.orderService = orderService;
+        this.checkoutService = checkoutService;
     }
 
     /**
@@ -69,29 +74,33 @@ public class OrderController {
     /**
      * Оформляет заказ из корзины.
      *
-     * <p>Транзакция открыта в {@code OrderService.buy()}, а не здесь: перехват
-     * ошибки происходит уже после её закрытия, поэтому откат уже не отменить.
+     * <p>Покупка разделена на три шага в {@link CheckoutService}: снимок корзины,
+     * оплата вне транзакции, сохранение заказа. Контроллер только переводит
+     * ожидаемые ошибки в редирект с сообщением; неожиданные ошибки уходят в
+     * {@code GlobalExceptionHandler}.
      *
-     * <p>Перехватывается только {@link EmptyCartException}: пустая корзина —
-     * ожидаемое состояние, а не сбой. Любая другая ошибка пробрасывается в
-     * {@code GlobalExceptionHandler}, а не растворяется в редиректе.
-     *
-     * <p>Перехват устроен через {@code onErrorResume}, а не через
-     * {@code try-catch}. {@code EmptyCartException} доходит сюда не выброшенным
-     * на стеке вызова, а сигналом ошибки в {@code Mono}: цепочка
-     * {@code buy()} выполняется при подписке, уже после возврата из метода, и к
-     * этому моменту обычный {@code catch} в методе был бы бесполезен.
+     * <p>Особенно важен случай {@code 402}: при недостатке средств заказ не
+     * создаётся, а корзина остаётся нетронутой. Пользователь возвращается в
+     * корзину и видит причину, а не пустую страницу с 500.
      *
      * @return имя шаблона заказа или редирект в корзину
      */
     @PostMapping("/buy")
     public Mono<String> buy() {
-        return orderService
-                .buy()
+        return checkoutService
+                .checkout()
                 .map(orderId -> "redirect:/orders/" + orderId + "?newOrder=true")
                 .onErrorResume(EmptyCartException.class, e -> {
                     LOG.warn("Покупка отменена: корзина пуста: {}", e.getMessage());
                     return Mono.just("redirect:/cart/items");
+                })
+                .onErrorResume(InsufficientFundsException.class, e -> {
+                    LOG.warn("Покупка отменена: недостаточно средств");
+                    return Mono.just("redirect:/cart/items?paymentError=insufficient-funds");
+                })
+                .onErrorResume(PaymentsUnavailableException.class, e -> {
+                    LOG.warn("Покупка отменена: сервис платежей недоступен: {}", e.getMessage());
+                    return Mono.just("redirect:/cart/items?paymentError=payments-unavailable");
                 });
     }
 }

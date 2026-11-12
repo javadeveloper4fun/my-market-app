@@ -13,6 +13,9 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.OrderDto;
+import ru.yandex.practicum.mymarket.payments.InsufficientFundsException;
+import ru.yandex.practicum.mymarket.payments.PaymentsUnavailableException;
+import ru.yandex.practicum.mymarket.service.CheckoutService;
 import ru.yandex.practicum.mymarket.service.EmptyCartException;
 import ru.yandex.practicum.mymarket.service.OrderNotFoundException;
 import ru.yandex.practicum.mymarket.service.OrderService;
@@ -36,6 +39,9 @@ class OrderControllerTest {
 
     @MockitoBean
     private OrderService orderService;
+
+    @MockitoBean
+    private CheckoutService checkoutService;
 
     /**
      * Проверяет, что GET /orders отдаёт страницу списка заказов.
@@ -95,7 +101,7 @@ class OrderControllerTest {
      */
     @Test
     void buyRedirectsToNewOrder() {
-        when(orderService.buy()).thenReturn(Mono.just(42L));
+        when(checkoutService.checkout()).thenReturn(Mono.just(42L));
 
         client.post()
                 .uri("/buy")
@@ -111,7 +117,7 @@ class OrderControllerTest {
      */
     @Test
     void buyRedirectsToCartWhenCartIsEmpty() {
-        when(orderService.buy()).thenReturn(Mono.error(new EmptyCartException("Cart is empty")));
+        when(checkoutService.checkout()).thenReturn(Mono.error(new EmptyCartException("Cart is empty")));
 
         client.post()
                 .uri("/buy")
@@ -132,9 +138,41 @@ class OrderControllerTest {
      */
     @Test
     void buyDoesNotRedirectOnUnexpectedIllegalState() {
-        when(orderService.buy()).thenReturn(Mono.error(new IllegalStateException("connection lost")));
+        when(checkoutService.checkout()).thenReturn(Mono.error(new IllegalStateException("connection lost")));
 
         client.post().uri("/buy").exchange().expectStatus().is5xxServerError();
+    }
+
+    /**
+     * Проверяет, что отказ платежа из-за недостатка средств ведёт в корзину.
+     */
+    @Test
+    void buyRedirectsToCartWhenFundsAreInsufficient() {
+        when(checkoutService.checkout()).thenReturn(Mono.error(new InsufficientFundsException()));
+
+        client.post()
+                .uri("/buy")
+                .exchange()
+                .expectStatus()
+                .is3xxRedirection()
+                .expectHeader()
+                .location("/cart/items?paymentError=insufficient-funds");
+    }
+
+    /**
+     * Проверяет, что недоступность платежного сервиса ведёт в корзину с кодом.
+     */
+    @Test
+    void buyRedirectsToCartWhenPaymentsAreUnavailable() {
+        when(checkoutService.checkout()).thenReturn(Mono.error(new PaymentsUnavailableException("connection refused")));
+
+        client.post()
+                .uri("/buy")
+                .exchange()
+                .expectStatus()
+                .is3xxRedirection()
+                .expectHeader()
+                .location("/cart/items?paymentError=payments-unavailable");
     }
 
     /**

@@ -93,7 +93,7 @@ class OrderServiceTest extends DatabaseResetTest {
         cartItemRepository.save(new CartItem(item1.getId(), 2)).block();
         cartItemRepository.save(new CartItem(item2.getId(), 1)).block();
 
-        long orderId = orderService.buy().block();
+        long orderId = placeOrderFromCart();
 
         assertThat(orderId).isPositive();
         List<OrderItem> savedItems = orderItemRepository
@@ -120,7 +120,7 @@ class OrderServiceTest extends DatabaseResetTest {
         cartItemRepository.save(new CartItem(jacket.getId(), 3)).block();
         cartItemRepository.save(new CartItem(boots.getId(), 1)).block();
 
-        long orderId = orderService.buy().block();
+        long orderId = placeOrderFromCart();
 
         List<OrderItem> savedItems = orderItemRepository
                 .findAllByOrderIdIn(List.of(orderId))
@@ -133,8 +133,8 @@ class OrderServiceTest extends DatabaseResetTest {
     }
 
     @Test
-    void buyThrowsWhenCartEmpty() {
-        assertThatThrownBy(() -> orderService.buy().block())
+    void prepareOrderThrowsWhenCartEmpty() {
+        assertThatThrownBy(() -> orderService.prepareOrder().block())
                 .isInstanceOf(EmptyCartException.class)
                 .hasMessageContaining("Cart is empty");
     }
@@ -144,7 +144,7 @@ class OrderServiceTest extends DatabaseResetTest {
         Item item = saveItem("Тестовый товар", "Описание", "1500");
         cartItemRepository.save(new CartItem(item.getId(), 2)).block();
 
-        long orderId = orderService.buy().block();
+        long orderId = placeOrderFromCart();
 
         OrderItem saved =
                 orderItemRepository.findAllByOrderIdIn(List.of(orderId)).blockFirst();
@@ -165,7 +165,7 @@ class OrderServiceTest extends DatabaseResetTest {
         Item item = saveItem("Тестовый товар", "Описание", "999.99");
         cartItemRepository.save(new CartItem(item.getId(), 2)).block();
 
-        long orderId = orderService.buy().block();
+        long orderId = placeOrderFromCart();
 
         OrderItem saved =
                 orderItemRepository.findAllByOrderIdIn(List.of(orderId)).blockFirst();
@@ -179,6 +179,16 @@ class OrderServiceTest extends DatabaseResetTest {
     @Test
     void getOrderFailsForUnknownId() {
         assertThatThrownBy(() -> orderService.getOrder(999999L).block()).isInstanceOf(OrderNotFoundException.class);
+    }
+
+    /**
+     * Проходит путь «подготовка — сохранение» без вызова платежного шлюза.
+     *
+     * @return идентификатор созданного заказа
+     */
+    private long placeOrderFromCart() {
+        PreparedOrder prepared = orderService.prepareOrder().block();
+        return orderService.placeOrder(prepared).block();
     }
 
     /**

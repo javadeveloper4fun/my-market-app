@@ -89,7 +89,25 @@ public class OrderService {
     }
 
     /**
-     * Оформляет заказ из корзины и очищает её.
+     * Готовит заказ из корзины, но не сохраняет его.
+     *
+     * <p>Между подготовкой и сохранением выполняется оплата. Если бы оплата
+     * вызывалась внутри транзакции, внешний HTTP-запрос удерживал бы соединение
+     * с базой всё время ожидания ответа платежного сервиса.
+     *
+     * @return снимок заказа с зафиксированными ценами и суммой
+     */
+    public Mono<PreparedOrder> prepareOrder() {
+        return cartItemRepository.findAll().collectList().flatMap(cartItems -> {
+            if (cartItems.isEmpty()) {
+                return Mono.error(new EmptyCartException("Cart is empty"));
+            }
+            return snapshot(cartItems).map(PreparedOrder::of);
+        });
+    }
+
+    /**
+     * Сохраняет оплаченный заказ и очищает корзину.
      *
      * <p>Создание заказа, его позиций и очистка корзины должны выполниться одной
      * транзакцией: иначе возможна покупка без заказа или товар в корзине после
@@ -106,26 +124,18 @@ public class OrderService {
      * <p>Позиции сохраняются последовательно через {@code concatMap}, а не
      * параллельно: так порядок вставок совпадает с порядком корзины.
      *
+     * @param prepared подготовленный заказ
      * @return идентификатор созданного заказа
      */
     @Transactional
-    public Mono<Long> buy() {
-        return cartItemRepository
-                .findAll()
-                .collectList()
-                .flatMap(cartItems -> {
-                    if (cartItems.isEmpty()) {
-                        return Mono.error(new EmptyCartException("Cart is empty"));
-                    }
-                    return snapshot(cartItems).flatMap(this::saveOrderWithItems);
-                })
-                // deleteAll() без WHERE — это «удалить всё из корзины». В однопользовательском
-                // учебном приложении это приемлемо: между snapshot() и deleteAll() никто
-                // другого не добавит товар. В боевом приложении с конкурентным доступом
-                // здесь бы нужен locking или удаление по конкретным идентификаторам,
-                // иначе позиция, добавленная между snapshot и deleteAll(), исчезнет без
-                // попадания в заказ.
-                .flatMap(orderId -> cartItemRepository.deleteAll().thenReturn(orderId));
+    public Mono<Long> placeOrder(PreparedOrder prepared) {
+        // Удаляются только позиции снимка: товар, добавленный в корзину после
+        // prepareOrder(), не должен исчезнуть без попадания в заказ.
+        List<Long> snapshotItemIds =
+                prepared.items().stream().map(OrderItem::getItemId).toList();
+        return saveOrderWithItems(prepared.items())
+                .flatMap(orderId ->
+                        cartItemRepository.deleteAllByItemIdIn(snapshotItemIds).thenReturn(orderId));
     }
 
     /**

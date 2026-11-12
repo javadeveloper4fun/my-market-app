@@ -2,11 +2,16 @@ package ru.yandex.practicum.mymarket.service;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Locale;
 import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import ru.yandex.practicum.mymarket.cache.CachedItem;
+import ru.yandex.practicum.mymarket.cache.CachedItemsPage;
+import ru.yandex.practicum.mymarket.cache.ItemCache;
+import ru.yandex.practicum.mymarket.cache.ItemsPageKey;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.ItemsPage;
 import ru.yandex.practicum.mymarket.dto.Paging;
@@ -45,14 +50,17 @@ public class ItemService {
     private final ItemRepository itemRepository;
     private final CartItemRepository cartItemRepository;
     private final ImageStorageService imageStorageService;
+    private final ItemCache itemCache;
 
     public ItemService(
             ItemRepository itemRepository,
             CartItemRepository cartItemRepository,
-            ImageStorageService imageStorageService) {
+            ImageStorageService imageStorageService,
+            ItemCache itemCache) {
         this.itemRepository = itemRepository;
         this.cartItemRepository = cartItemRepository;
         this.imageStorageService = imageStorageService;
+        this.itemCache = itemCache;
     }
 
     /**
@@ -76,17 +84,51 @@ public class ItemService {
         // вместо первой страницы.
         int normalizedPageNumber = pageIndex + 1;
 
+        // Ключ кеша не должен размножаться из-за регистра и неизвестных значений:
+        // база для них всё равно применяет сортировку по умолчанию, и отдельная
+        // запись кеша на «alpha» и «NO» означала бы один и тот же результат
+        // под двумя ключами.
+        String cacheSort =
+                switch (normalizedSort.toUpperCase(Locale.ROOT)) {
+                    case "ALPHA" -> "ALPHA";
+                    case "PRICE" -> "PRICE";
+                    default -> "NO";
+                };
+        ItemsPageKey cacheKey = new ItemsPageKey(0, searchForView, cacheSort, normalizedPageNumber, pageLimit);
+
+        // Cache-aside: сначала кеш, при промахе — база и запись в кеш. Версию
+        // каталога подставляет реализация кеша, поэтому в ключе здесь ноль.
+        return itemCache
+                .getPage(cacheKey)
+                .flatMap(cachedPage -> cachedPage
+                        .map(page -> Mono.just(page))
+                        .orElseGet(() -> loadItemsPage(querySearch, normalizedSort, pageLimit, offset)
+                                .flatMap(page ->
+                                        itemCache.putPage(cacheKey, page).thenReturn(page))))
+                .flatMap(page -> withCartCounts(page, searchForView, normalizedSort, normalizedPageNumber, pageLimit));
+    }
+
+    /**
+     * Читает страницу каталога из базы.
+     *
+     * @param querySearch  подготовленная строка поиска или {@code null}
+     * @param sort         сортировка
+     * @param pageLimit    размер страницы
+     * @param offset       смещение
+     * @return страница без количества в корзине
+     */
+    private Mono<CachedItemsPage> loadItemsPage(String querySearch, String sort, int pageLimit, long offset) {
         Flux<Item> page;
         Mono<Long> total;
         if (querySearch != null) {
-            page = switch (normalizedSort) {
+            page = switch (sort) {
                 case "ALPHA" -> itemRepository.searchByTitle(querySearch, pageLimit, offset);
                 case "PRICE" -> itemRepository.searchByPrice(querySearch, pageLimit, offset);
                 default -> itemRepository.searchUnsorted(querySearch, pageLimit, offset);
             };
             total = itemRepository.countByText(querySearch);
         } else {
-            page = switch (normalizedSort) {
+            page = switch (sort) {
                 case "ALPHA" -> itemRepository.findAllByTitle(pageLimit, offset);
                 case "PRICE" -> itemRepository.findAllByPrice(pageLimit, offset);
                 default -> itemRepository.findAllUnsorted(pageLimit, offset);
@@ -101,11 +143,8 @@ public class ItemService {
                 // пару. Это аналог CompletableFuture.allOf, но без блокировки
                 // потока: подписка на оба запроса происходит внутри Reactor.
                 .zipWith(total)
-                // Только после обеих выборок можно дописать количество в корзине
-                // и собрать ItemsPage. До подписки на возвращённый Mono ни один
-                // из запросов ещё не выполнен.
-                .flatMap(pair -> withCartCounts(
-                        pair.getT1(), pair.getT2(), searchForView, normalizedSort, normalizedPageNumber, pageLimit));
+                .map(pair -> new CachedItemsPage(
+                        pair.getT1().stream().map(CachedItem::fromEntity).toList(), pair.getT2()));
     }
 
     /**
@@ -115,16 +154,21 @@ public class ItemService {
      * @return карточка товара
      */
     public Mono<ItemDto> getItem(long id) {
-        // Mono ленив: запрос уйдёт в базу только при подписке на результат.
-        return itemRepository
-                .findById(id)
-                // Пустой Mono означает «товара нет», но для карточки это ошибка.
-                // switchIfEmpty превращает пустоту в ItemNotFoundException,
-                // иначе контроллер получил бы пустой ответ вместо 404.
-                .switchIfEmpty(Mono.error(() -> new ItemNotFoundException(id)))
+        return itemCache
+                .getItem(id)
+                .flatMap(cachedItem -> cachedItem
+                        .map(item -> Mono.just(item))
+                        .orElseGet(() -> itemRepository
+                                .findById(id)
+                                // Пустой Mono означает «товара нет», но для карточки это ошибка.
+                                // switchIfEmpty превращает пустоту в ItemNotFoundException,
+                                // иначе контроллер получил бы пустой ответ вместо 404.
+                                .switchIfEmpty(Mono.error(() -> new ItemNotFoundException(id)))
+                                .map(CachedItem::fromEntity)
+                                .flatMap(item -> itemCache.putItem(item).thenReturn(item))))
                 // Товар найден; теперь читаем его позицию в корзине. flatMap
                 // нужен потому, что следующий шаг тоже асинхронный.
-                .flatMap(item -> cartItemRepository
+                .flatMap(cachedItem -> cartItemRepository
                         .findByItemId(id)
                         // Дальше нужен только счётчик, а не вся сущность CartItem.
                         .map(CartItem::getCount)
@@ -133,7 +177,7 @@ public class ItemService {
                         .defaultIfEmpty(0)
                         // Собираем DTO из товара и количества; это последний
                         // шаг цепочки, подписку сделает вызывающий код.
-                        .map(count -> ItemDto.fromEntity(item, count)));
+                        .map(cachedItem::toDto));
     }
 
     /**
@@ -208,6 +252,10 @@ public class ItemService {
                 // он никому не виден. Неудача удаления только логируется,
                 // чтобы не замаскировать исходную ошибку.
                 .onErrorResume(error -> imageStorageService.delete(key).then(Mono.error(error)))
+                // Новый товар меняет все страницы каталога. Инвалидация — не
+                // часть транзакции БД и не должна её ронять: реализация кеша
+                // сама гасит ошибки Redis, превращая их в запись в лог.
+                .flatMap(saved -> itemCache.invalidatePages().thenReturn(saved))
                 .flatMap(saved -> cartItemRepository
                         .findByItemId(saved.getId())
                         .map(CartItem::getCount)
@@ -224,8 +272,7 @@ public class ItemService {
      * корзине: условие {@code IN} без ограничения обошло бы весь каталог, а
      * шаблону нужны числа ровно у показанных товаров.
      *
-     * @param items      товары страницы
-     * @param total      всего товаров под поисковый запрос
+     * @param page       товары страницы без количества в корзине
      * @param search     строка поиска для модели
      * @param sort       вид сортировки для модели
      * @param pageNumber номер страницы, начиная с 1
@@ -233,19 +280,19 @@ public class ItemService {
      * @return страница витрины
      */
     private Mono<ItemsPage> withCartCounts(
-            List<Item> items, long total, String search, String sort, int pageNumber, int pageLimit) {
-        if (items.isEmpty()) {
-            return Mono.just(new ItemsPage(List.of(), search, sort, Paging.of(pageLimit, pageNumber, total)));
+            CachedItemsPage page, String search, String sort, int pageNumber, int pageLimit) {
+        if (page.items().isEmpty()) {
+            return Mono.just(new ItemsPage(List.of(), search, sort, Paging.of(pageLimit, pageNumber, page.total())));
         }
-        List<Long> itemIds = items.stream().map(Item::getId).toList();
+        List<Long> itemIds = page.items().stream().map(CachedItem::id).toList();
         return cartItemRepository
                 .findAllByItemIdIn(itemIds)
                 .collectMap(CartItem::getItemId, CartItem::getCount)
                 .map(counts -> {
-                    List<ItemDto> dtos = items.stream()
-                            .map(item -> ItemDto.fromEntity(item, counts.getOrDefault(item.getId(), 0)))
+                    List<ItemDto> dtos = page.items().stream()
+                            .map(item -> item.toDto(counts.getOrDefault(item.id(), 0)))
                             .toList();
-                    return ItemsPage.of(dtos, search, sort, Paging.of(pageLimit, pageNumber, total));
+                    return ItemsPage.of(dtos, search, sort, Paging.of(pageLimit, pageNumber, page.total()));
                 });
     }
 

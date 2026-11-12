@@ -6,8 +6,9 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import reactor.core.publisher.Mono;
-import ru.yandex.practicum.mymarket.dto.CartPage;
+import ru.yandex.practicum.mymarket.dto.CartView;
 import ru.yandex.practicum.mymarket.service.Action;
+import ru.yandex.practicum.mymarket.service.CartPageService;
 import ru.yandex.practicum.mymarket.service.CartService;
 
 /**
@@ -22,9 +23,11 @@ import ru.yandex.practicum.mymarket.service.CartService;
 public class CartController {
 
     private final CartService cartService;
+    private final CartPageService cartPageService;
 
-    public CartController(CartService cartService) {
+    public CartController(CartService cartService, CartPageService cartPageService) {
         this.cartService = cartService;
+        this.cartPageService = cartPageService;
     }
 
     /**
@@ -34,12 +37,17 @@ public class CartController {
      * подписки отдавать имя шаблона рано — на момент вызова корзина ещё не
      * прочитана.
      *
-     * @param model модель представления
+     * @param model        модель представления
+     * @param paymentError код ошибки платежей из редиректа после покупки
      * @return имя шаблона корзины
      */
     @GetMapping("/cart/items")
-    public Mono<String> getCart(Model model) {
-        return cartService.getCart().doOnNext(cart -> fillModel(model, cart)).thenReturn("cart");
+    public Mono<String> getCart(
+            Model model, @RequestParam(name = "paymentError", required = false) String paymentError) {
+        return cartPageService
+                .getCartView()
+                .doOnNext(view -> fillModel(model, view, paymentError))
+                .thenReturn("cart");
     }
 
     /**
@@ -68,19 +76,41 @@ public class CartController {
     public Mono<String> changeCartItem(@RequestParam long id, @RequestParam Action action, Model model) {
         return cartService
                 .applyAction(id, action)
-                .then(cartService.getCart())
-                .doOnNext(cart -> fillModel(model, cart))
+                .then(cartPageService.getCartView())
+                .doOnNext(view -> fillModel(model, view, null))
                 .thenReturn("cart");
     }
 
     /**
      * Наполняет модель корзины.
      *
-     * @param model модель представления
-     * @param cart  содержимое корзины
+     * @param model        модель представления
+     * @param view         корзина и состояние платежей
+     * @param paymentError код ошибки, пришедший редиректом после покупки
      */
-    private void fillModel(Model model, CartPage cart) {
-        model.addAttribute("items", cart.items());
-        model.addAttribute("total", cart.total());
+    private void fillModel(Model model, CartView view, String paymentError) {
+        model.addAttribute("items", view.cart().items());
+        model.addAttribute("total", view.cart().total());
+        model.addAttribute("balance", view.balance());
+        model.addAttribute("canPay", view.canPay());
+        model.addAttribute("insufficientFunds", view.insufficientFunds());
+        model.addAttribute("paymentMessage", paymentMessage(view, paymentError));
+    }
+
+    /**
+     * Выбирает сообщение об ошибке платежей для страницы.
+     *
+     * @param view         состояние корзины
+     * @param paymentError код из редиректа
+     * @return сообщение или {@code null}
+     */
+    private String paymentMessage(CartView view, String paymentError) {
+        if (view.paymentError() != null) {
+            return view.paymentError();
+        }
+        if ("payments-unavailable".equals(paymentError)) {
+            return "Сервис платежей недоступен. Оформление заказа временно невозможно.";
+        }
+        return null;
     }
 }

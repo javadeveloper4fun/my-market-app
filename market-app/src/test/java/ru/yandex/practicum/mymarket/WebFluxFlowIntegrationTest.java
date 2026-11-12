@@ -3,10 +3,12 @@ package ru.yandex.practicum.mymarket;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -17,6 +19,7 @@ import ru.yandex.practicum.mymarket.repository.ItemRepository;
 import ru.yandex.practicum.mymarket.repository.OrderItemRepository;
 import ru.yandex.practicum.mymarket.repository.OrderRepository;
 import ru.yandex.practicum.mymarket.support.DatabaseResetTest;
+import ru.yandex.practicum.mymarket.support.StubPaymentsConfiguration;
 
 /**
  * Интеграционные тесты сквозного сценария
@@ -50,6 +53,7 @@ import ru.yandex.practicum.mymarket.support.DatabaseResetTest;
 @SpringBootTest
 @AutoConfigureWebTestClient
 @ActiveProfiles("test")
+@Import(StubPaymentsConfiguration.class)
 class WebFluxFlowIntegrationTest extends DatabaseResetTest {
 
     @Autowired
@@ -66,6 +70,21 @@ class WebFluxFlowIntegrationTest extends DatabaseResetTest {
 
     @Autowired
     private OrderItemRepository orderItemRepository;
+
+    @Autowired
+    private StubPaymentsConfiguration.StubPaymentsGateway payments;
+
+    /**
+     * Возвращает заглушку платежей в исходное состояние.
+     *
+     * <p>Заглушка живёт в контексте дольше теста и накапливает списания, поэтому
+     * без сброса тесты зависели бы от порядка выполнения.
+     */
+    @BeforeEach
+    void resetPaymentsStub() {
+        payments.setBalance(1_000_000L);
+        payments.setUnavailable(false);
+    }
 
     /**
      * Проверяет, что тесты изолированы друг от друга.
@@ -150,6 +169,77 @@ class WebFluxFlowIntegrationTest extends DatabaseResetTest {
                 .value(html -> assertThat(html).doesNotContain("5200"));
 
         assertThat(cartItemRepository.count().block()).isZero();
+    }
+
+    /**
+     * Проверяет, что при недостатке средств заказ не создаётся, корзина
+     * сохраняется, а пользователь возвращается в корзину с причиной.
+     */
+    @Test
+    void buyRedirectsToCartWhenFundsAreInsufficient() {
+        Item item = saveItem("Куртка", "Утеплённая", "4500");
+        cartItemRepository.save(new CartItem(item.getId(), 1)).block();
+        payments.setBalance(0);
+
+        client.post()
+                .uri("/buy")
+                .exchange()
+                .expectStatus()
+                .is3xxRedirection()
+                .expectHeader()
+                .value(
+                        "Location",
+                        location -> assertThat(location)
+                                .contains("/cart/items")
+                                .contains("paymentError=insufficient-funds"));
+
+        assertThat(orderRepository.count().block()).isZero();
+        assertThat(cartItemRepository.count().block()).isEqualTo(1);
+    }
+
+    /**
+     * Проверяет, что недоступность платежного сервиса не приводит к заказу.
+     */
+    @Test
+    void buyRedirectsToCartWhenPaymentsAreUnavailable() {
+        Item item = saveItem("Куртка", "Утеплённая", "4500");
+        cartItemRepository.save(new CartItem(item.getId(), 1)).block();
+        payments.setUnavailable(true);
+
+        client.post()
+                .uri("/buy")
+                .exchange()
+                .expectStatus()
+                .is3xxRedirection()
+                .expectHeader()
+                .value(
+                        "Location",
+                        location -> assertThat(location)
+                                .contains("/cart/items")
+                                .contains("paymentError=payments-unavailable"));
+
+        assertThat(orderRepository.count().block()).isZero();
+        assertThat(cartItemRepository.count().block()).isEqualTo(1);
+    }
+
+    /**
+     * Проверяет, что корзина объясняет недоступность платежей, а не показывает
+     * пустой баланс.
+     */
+    @Test
+    void cartShowsPaymentsUnavailableMessage() {
+        Item item = saveItem("Куртка", "Утеплённая", "4500");
+        cartItemRepository.save(new CartItem(item.getId(), 1)).block();
+        payments.setUnavailable(true);
+
+        client.get()
+                .uri("/cart/items")
+                .exchange()
+                .expectStatus()
+                .isOk()
+                .expectBody(String.class)
+                .value(html ->
+                        assertThat(html).contains("Сервис платежей недоступен").doesNotContain("Баланс:"));
     }
 
     /**

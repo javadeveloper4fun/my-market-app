@@ -2,7 +2,10 @@ package ru.yandex.practicum.mymarket;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration;
+import ru.yandex.practicum.mymarket.cache.ItemCacheProperties;
+import ru.yandex.practicum.mymarket.payments.PaymentsProperties;
 
 /**
  * Главный класс Spring Boot-приложения «Витрина интернет-магазина».
@@ -41,6 +44,7 @@ import org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerA
  * автоконфигурация не может знать, какой из них выбрать, отсюда и исключение.
  */
 @SpringBootApplication(exclude = DataSourceTransactionManagerAutoConfiguration.class)
+@EnableConfigurationProperties({ItemCacheProperties.class, PaymentsProperties.class})
 public class MyMarketAppApplication {
 
     public static void main(String[] args) {

@@ -58,4 +58,16 @@ public interface CartItemRepository extends ReactiveCrudRepository<CartItem, Lon
      */
     @Query("SELECT * FROM cart_item ORDER BY id")
     Flux<CartItem> findAllSorted();
+
+    /**
+     * Удаляет перечисленные позиции корзины.
+     *
+     * <p>Удаление именно по позициям снимка заказа, а не «всё подряд»: между
+     * подготовкой заказа и его сохранением пользователь может успеть добавить
+     * товар, и этот товар не должен исчезнуть без попадания в заказ.
+     *
+     * @param itemIds идентификаторы товаров, вошедших в заказ
+     * @return завершение операции
+     */
+    Mono<Void> deleteAllByItemIdIn(Collection<Long> itemIds);
 }
