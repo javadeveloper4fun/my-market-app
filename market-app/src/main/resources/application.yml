@@ -19,6 +19,16 @@ spring:
     username: ${SPRING_DATASOURCE_USERNAME:market}
     password: ${SPRING_DATASOURCE_PASSWORD:market}
 
+  # Спринт 7 — кеш каталога в Redis. Приложение работает с Redis через
+  # реактивный Lettuce-клиент; блокирующий RedisTemplate в WebFlux занял бы
+  # поток event loop.
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      password: ${SPRING_DATA_REDIS_PASSWORD:}
+      timeout: 2s
+
   liquibase:
     # Спринт 5, Тема 4, Урок 1 — миграции схемы БД.
     # Схему создаёт Liquibase из файла миграций, а не Hibernate.
@@ -48,6 +58,18 @@ server:
 # в S3-совместимом хранилище. Задание требует возможности загрузки списка
 # товаров на витрину; выбранный способ — веб-интерфейс добавления с картинкой.
 market:
+  # Спринт 7 — кеширование витрины. Кеш можно выключить в тестах, которые
+  # не проверяют Redis; в рабочем профиле он включён.
+  cache:
+    enabled: ${MARKET_CACHE_ENABLED:true}
+    items:
+      ttl: ${MARKET_CACHE_ITEMS_TTL:PT5M}
+
+  # Спринт 7 — интеграция с отдельным сервисом платежей.
+  payments:
+    base-url: ${MARKET_PAYMENTS_BASE_URL:http://localhost:8081}
+    timeout: ${MARKET_PAYMENTS_TIMEOUT:2s}
+
   image-s3:
     # Адрес хранилища. Локально это S3Mock из docker-compose; в среде
     # эксплуатации подставляется настоящий S3 через переменную окружения.

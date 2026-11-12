@@ -1,0 +1,140 @@
+plugins {
+    id 'org.springframework.boot'
+}
+
+def generatedPaymentsClientDir = layout.buildDirectory.dir('generated/payments-client')
+
+sourceSets {
+    main {
+        java {
+            srcDir generatedPaymentsClientDir.map { it.dir('src/main/java') }
+        }
+    }
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-webflux'
+    // Спринт 7 — кеш товаров. Реактивный клиент Redis работает на Lettuce и не
+    // блокирует event loop; блокирующий RedisTemplate в WebFlux не используется.
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis-reactive'
+    // Спринт 6 — реактивный доступ к данным. R2DBC не блокирует: вместо
+    // синхронного DataSource возвращается ConnectionFactory, а репозитории
+    // отдают Flux и Mono. Замена JPA осознанна: Hibernate ORM блокирующий,
+    // Hibernate Reactive закрывает не все нужные случаи.
+    implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc'
+    implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+
+    // Драйверы нужны оба, и это не дублирование. Приложение ходит в БД
+    // через R2DBC (r2dbc-postgresql), а Liquibase — через JDBC (postgresql):
+    // миграции выполняются до старта приложения и в реактивный поток
+    // не вписываются. Убрав один из драйверов, получим либо отказ
+    // соединения на старте, либо неоткаченные миграции.
+    runtimeOnly 'org.postgresql:r2dbc-postgresql'
+    runtimeOnly 'org.postgresql:postgresql'
+
+    // Спринт 5, Тема 4 — миграции схемы БД.
+    // Нужны две зависимости, и это не дублирование:
+    // liquibase-core — сам Liquibase (разбор changelog, выполнение changeset'ов),
+    // spring-boot-liquibase — автоконфигурация Spring Boot. В Spring Boot 4
+    // автоконфигурация разнесена по отдельным модулям.
+    implementation 'org.liquibase:liquibase-core'
+    implementation 'org.springframework.boot:spring-boot-liquibase'
+
+    // Спринт 6, Тема 11 «Проектная работа» — хранение картинок товаров в S3:
+    // выбранный способ выполнить требование задания о загрузке списка товаров.
+    // AWS SDK подключается напрямую, без Spring Cloud AWS: тот завязан на
+    // Boot 3.x, а проект живёт на Boot 4.1.1. Версии модулей задаёт bom —
+    // управления версиями AWS SDK в spring-boot-dependencies нет. Клиент —
+    // netty-nio: HTTP-клиент на Netty не занимает потоки, apache-client
+    // опирается на них.
+    implementation platform('software.amazon.awssdk:bom:2.46.7')
+    implementation 'software.amazon.awssdk:s3'
+    runtimeOnly 'software.amazon.awssdk:netty-nio-client'
+
+    // Сгенерированный OpenAPI-клиент исторически собран под Jackson 2 и
+    // Jackson2JsonEncoder/Decoder. В Boot 4 основной Jackson — 3.x, но Spring 7
+    // пока сохраняет совместимые кодеки. Jackson 2 нужен только клиенту
+    // платежей и не проникает в модели приложения.
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.21.8'
+    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.21.8'
+    implementation 'jakarta.annotation:jakarta.annotation-api'
+
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    testCompileOnly 'org.projectlombok:lombok'
+    testAnnotationProcessor 'org.projectlombok:lombok'
+
+    // Тесты на H2 идут через R2DBC, поэтому нужен r2dbc-h2. Драйвер h2
+    // остаётся тоже: через JDBC к нему подключается Liquibase.
+    testRuntimeOnly 'io.r2dbc:r2dbc-h2'
+    testRuntimeOnly 'com.h2database:h2'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-webflux-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-data-r2dbc-test'
+
+    // Спринт 5, Тема 5, Урок 2 — проверка схемы и запросов на настоящей СУБД.
+    // H2 в MODE=PostgreSQL отличается от PostgreSQL, поэтому для части тестов
+    // поднимается реальный сервер в контейнере.
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:testcontainers-postgresql'
+    testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+    testImplementation 'org.testcontainers:testcontainers'
+
+    // HTTP-заглушка для тестов платёжного клиента: проверяется реальный
+    // WebClient, а не мок интерфейса.
+    testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
+
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.register('generatePaymentsClient', org.openapitools.generator.gradle.plugin.tasks.GenerateTask) {
+    generatorName = 'java'
+    library = 'webclient'
+    inputSpec = rootProject.file('api/payments-api.yaml').absolutePath
+    outputDir = generatedPaymentsClientDir.get().asFile.absolutePath
+    apiPackage = 'ru.yandex.practicum.payments.client.api'
+    modelPackage = 'ru.yandex.practicum.payments.client.model'
+    invokerPackage = 'ru.yandex.practicum.payments.client.invoker'
+    configOptions = [
+        useJakartaEe: 'true',
+        openApiNullable: 'false',
+        dateLibrary: 'java8',
+        serializationLibrary: 'jackson'
+    ]
+}
+
+// Генератор 7.14 всё ещё собирает webclient-клиент под старый API HttpHeaders.
+// Spring 7 убрал Map-совместимые методы, поэтому две строки в сгенерированном
+// ApiClient заменяются эквивалентными. Правка выполняется над артефактом в
+// build/, а не над закоммиченным исходником; исходный шаблон не меняется.
+tasks.register('patchGeneratedPaymentsClient') {
+    dependsOn 'generatePaymentsClient'
+
+    def apiClientFile = generatedPaymentsClientDir.map {
+        it.file('src/main/java/ru/yandex/practicum/payments/client/invoker/ApiClient.java')
+    }
+    inputs.file(apiClientFile)
+    outputs.file(apiClientFile)
+
+    doLast {
+        def file = apiClientFile.get().asFile
+        def text = file.getText('UTF-8')
+        text = text.replace('defaultHeaders.containsKey(name)', 'defaultHeaders.containsHeader(name)')
+        text = text.replace('headers.entrySet()', 'headers.headerSet()')
+        file.setText(text, 'UTF-8')
+    }
+}
+
+tasks.named('compileJava') {
+    dependsOn 'patchGeneratedPaymentsClient'
+}
+
+// Сгенерированный код не проверяется линтерами: его форматирование задаёт
+// генератор, а не наш стиль.
+tasks.named('checkstyleMain') {
+    source = fileTree('src/main/java')
+}
+
+tasks.named('checkstyleTest') {
+    source = fileTree('src/test/java')
+}

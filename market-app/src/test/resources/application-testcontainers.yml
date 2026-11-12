@@ -19,3 +19,8 @@ spring:
     # стартовое наполнение витрины (context: seed) не выполняется
     # и каждый тест начинает с пустого каталога.
     contexts: test
+
+market:
+  # Тесты на настоящей PostgreSQL не проверяют Redis, поэтому кеш выключен.
+  cache:
+    enabled: false
