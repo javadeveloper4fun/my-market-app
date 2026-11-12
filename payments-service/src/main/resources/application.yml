@@ -1,0 +1,15 @@
+server:
+  port: ${SERVER_PORT:8081}
+
+spring:
+  application:
+    name: payments-service
+
+payments:
+  initial-balance: ${PAYMENTS_INITIAL_BALANCE:10000}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
