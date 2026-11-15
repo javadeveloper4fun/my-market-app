@@ -74,12 +74,20 @@ public class GeneratedPaymentsGateway implements PaymentsGateway {
      * @return ошибка для бизнес-логики
      */
     private Throwable mapError(Throwable error) {
-        if (error instanceof InsufficientFundsException || error instanceof PaymentsUnavailableException) {
+        if (error instanceof InsufficientFundsException
+                || error instanceof PaymentsUnavailableException
+                || error instanceof InvalidPaymentRequestException) {
             return error;
         }
-        if (error instanceof WebClientResponseException responseException
-                && responseException.getStatusCode().value() == HttpStatus.PAYMENT_REQUIRED.value()) {
-            return new InsufficientFundsException();
+        if (error instanceof WebClientResponseException responseException) {
+            int status = responseException.getStatusCode().value();
+            if (status == HttpStatus.PAYMENT_REQUIRED.value()) {
+                return new InsufficientFundsException();
+            }
+            if (status == HttpStatus.BAD_REQUEST.value()) {
+                LOG.warn("Сервис платежей отклонил запрос: {}", responseException.getResponseBodyAsString());
+                return new InvalidPaymentRequestException("Сервис платежей отклонил сумму платежа", error);
+            }
         }
         if (error instanceof TimeoutException) {
             LOG.warn("Сервис платежей не ответил за отведённое время: {}", error.getMessage());

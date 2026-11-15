@@ -35,7 +35,18 @@ class ItemCacheKeyTest {
     }
 
     @Test
+    void underscoreSearchDoesNotCollideWithBlankSearch() {
+        String blank = new ItemsPageKey(3, "", "PRICE", 1, 20).toRedisKey();
+        String underscore = new ItemsPageKey(3, "_", "PRICE", 1, 20).toRedisKey();
+
+        assertThat(blank).isEqualTo("market:items:3:_:PRICE:1:20");
+        assertThat(underscore).isEqualTo("market:items:3:%5F:PRICE:1:20");
+        assertThat(underscore).isNotEqualTo(blank);
+    }
+
+    @Test
     void versionIsPartOfTheKey() {
-        assertThat(new ItemsPageKey(3, "_", "PRICE", 1, 20).toRedisKey()).isEqualTo("market:items:3:_:PRICE:1:20");
+        assertThat(new ItemsPageKey(3, "Куртка", "PRICE", 1, 20).toRedisKey())
+                .isEqualTo("market:items:3:%D0%9A%D1%83%D1%80%D1%82%D0%BA%D0%B0:PRICE:1:20");
     }
 }

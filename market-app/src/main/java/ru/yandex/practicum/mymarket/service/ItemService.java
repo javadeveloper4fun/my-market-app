@@ -5,13 +5,16 @@ import java.util.List;
 import java.util.Locale;
 import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.reactive.TransactionalOperator;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.cache.CachedItem;
 import ru.yandex.practicum.mymarket.cache.CachedItemsPage;
 import ru.yandex.practicum.mymarket.cache.ItemCache;
 import ru.yandex.practicum.mymarket.cache.ItemsPageKey;
+import ru.yandex.practicum.mymarket.dto.InvalidItemFormException;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.ItemsPage;
 import ru.yandex.practicum.mymarket.dto.Paging;
@@ -51,16 +54,19 @@ public class ItemService {
     private final CartItemRepository cartItemRepository;
     private final ImageStorageService imageStorageService;
     private final ItemCache itemCache;
+    private final TransactionalOperator transactionalOperator;
 
     public ItemService(
             ItemRepository itemRepository,
             CartItemRepository cartItemRepository,
             ImageStorageService imageStorageService,
-            ItemCache itemCache) {
+            ItemCache itemCache,
+            TransactionalOperator transactionalOperator) {
         this.itemRepository = itemRepository;
         this.cartItemRepository = cartItemRepository;
         this.imageStorageService = imageStorageService;
         this.itemCache = itemCache;
+        this.transactionalOperator = transactionalOperator;
     }
 
     /**
@@ -189,9 +195,11 @@ public class ItemService {
      * <p>Загрузка картинки в S3 выполняется <em>вне</em> транзакции БД: сетевой
      * вызов к хранилищу удерживал бы соединение с БД открытым на всё время
      * загрузки, что непозволительно в событийном цикле WebFlux. Сначала
-     * картинка кладётся в хранилище, затем полученный ключ передаёт в
-     * {@link #saveWithImage(String, String, long, String)}, который уже работает
-     * внутри {@code @Transactional}.
+     * картинка кладётся в хранилище, затем запись в БД выполняется отдельной
+     * транзакцией через {@link TransactionalOperator}. Вызов
+     * {@link #saveWithImage(String, String, long, String)} изнутри этого метода
+     * не подошёл бы: self-invocation не проходит через Spring-прокси, и
+     * аннотация {@code @Transactional} на нём осталась бы незамеченной.
      *
      * @param title       название товара
      * @param description описание товара
@@ -200,6 +208,7 @@ public class ItemService {
      * @return созданный товар; количество в корзине равно нулю
      * @see #saveWithImage(String, String, long, String)
      */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public Mono<ItemDto> createItem(String title, String description, long price, FilePart image) {
         // Тема 3/11, урок 1/3 «Спецификация Reactive Streams». Обратите внимание
         // на форму метода: несколько асинхронных шагов (загрузка в хранилище,
@@ -211,11 +220,16 @@ public class ItemService {
         // в хранилище, ни вставка в базу. Реализаций Publisher и Subscriber
         // в коде нет — обе создаёт Reactor, а цепочка описана объявлением
         // возвращаемого типа.
-        //
+        if (price <= 0) {
+            return Mono.error(new InvalidItemFormException("Цена товара должна быть больше нуля"));
+        }
         // Сначала картинка кладётся в хранилище, потом товар вставляется в базу.
         // Обратный порядок опаснее: если вставка не пройдёт, товара в базе не
         // будет, а объект в хранилище уже будет, и удалять его придётся отдельно.
-        return imageStorageService.upload(image).flatMap(key -> saveWithImage(title, description, price, key));
+        return imageStorageService
+                .upload(image)
+                .flatMap(key ->
+                        transactionalOperator.transactional(saveWithImageInternal(title, description, price, key)));
     }
 
     /**
@@ -238,6 +252,29 @@ public class ItemService {
      */
     @Transactional
     public Mono<ItemDto> saveWithImage(String title, String description, long price, String key) {
+        return saveWithImageInternal(title, description, price, key);
+    }
+
+    /**
+     * Сохраняет товар и инвалидирует кеш в уже открытой транзакции.
+     *
+     * <p>Метод не аннотирован {@code @Transactional} намеренно: его вызывают
+     * либо из {@link #saveWithImage(String, String, long, String)} через прокси,
+     * либо из {@link #createItem(String, String, long, FilePart)} внутри
+     * {@link TransactionalOperator}. В обоих случаях транзакция уже открыта.
+     *
+     * @param title       название товара
+     * @param description описание товара
+     * @param price       цена в рублях
+     * @param key         ключ уже загруженной в S3 картинки
+     * @return созданный товар; количество в корзине равно нулю
+     */
+    private Mono<ItemDto> saveWithImageInternal(String title, String description, long price, String key) {
+        if (price <= 0) {
+            return imageStorageService
+                    .delete(key)
+                    .then(Mono.error(new InvalidItemFormException("Цена товара должна быть больше нуля")));
+        }
         return itemRepository
                 .save(new Item(title, description, IMAGE_PATH_PREFIX + key, BigDecimal.valueOf(price)))
                 // Тема 2/11, п. «Обработка ошибок» и «Устойчивость»:

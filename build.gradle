@@ -37,6 +37,16 @@ subprojects {
         options.encoding = 'UTF-8'
     }
 
+    tasks.withType(Javadoc).configureEach {
+        options.encoding = 'UTF-8'
+    }
+
+    // Javadoc проверяет ссылки и импорты, которые не ловит компилятор.
+    // Без этой связи битая ссылка снова попадёт в сборку незамеченной.
+    tasks.named('check') {
+        dependsOn tasks.named('javadoc')
+    }
+
     tasks.withType(Test).configureEach {
         useJUnitPlatform()
     }

@@ -22,13 +22,27 @@ public record ItemsPageKey(long version, String search, String sort, int page, i
     private static final String PREFIX = "market:items:";
 
     /**
+     * Маркер пустого поиска.
+     *
+     * <p>Символ {@code _} не кодируется {@link URLEncoder}, поэтому в непустой
+     * строке он дополнительно заменяется на {@code %5F}. Иначе поиск по
+     * символу {@code _} дал бы тот же ключ, что и пустой поиск.
+     */
+    private static final String EMPTY_SEARCH = "_";
+
+    /**
      * Собирает ключ Redis.
      *
      * @return строка ключа
      */
     public String toRedisKey() {
-        String searchPart =
-                search == null || search.isBlank() ? "_" : URLEncoder.encode(search.trim(), StandardCharsets.UTF_8);
+        String searchPart;
+        if (search == null || search.isBlank()) {
+            searchPart = EMPTY_SEARCH;
+        } else {
+            searchPart =
+                    URLEncoder.encode(search.trim(), StandardCharsets.UTF_8).replace("_", "%5F");
+        }
         return PREFIX + version + ':' + searchPart + ':' + sort + ':' + page + ':' + pageSize;
     }
 

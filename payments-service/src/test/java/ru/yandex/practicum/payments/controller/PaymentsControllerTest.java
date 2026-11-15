@@ -75,24 +75,50 @@ class PaymentsControllerTest {
     }
 
     @Test
-    void rejectsZeroAmount() {
+    void rejectsZeroAmountWithContractBody() {
         client.post()
                 .uri("/api/v1/payments")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("{\"amount\":0}")
                 .exchange()
                 .expectStatus()
-                .isBadRequest();
+                .isBadRequest()
+                .expectBody()
+                .jsonPath("$.code")
+                .isEqualTo("INVALID_AMOUNT")
+                .jsonPath("$.message")
+                .isNotEmpty();
     }
 
     @Test
-    void rejectsMissingAmount() {
+    void rejectsMissingAmountWithContractBody() {
         client.post()
                 .uri("/api/v1/payments")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("{}")
                 .exchange()
                 .expectStatus()
-                .isBadRequest();
+                .isBadRequest()
+                .expectBody()
+                .jsonPath("$.code")
+                .isEqualTo("INVALID_AMOUNT")
+                .jsonPath("$.message")
+                .isNotEmpty();
+    }
+
+    @Test
+    void rejectsMalformedJsonWithContractBody() {
+        client.post()
+                .uri("/api/v1/payments")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("{\"amount\":")
+                .exchange()
+                .expectStatus()
+                .isBadRequest()
+                .expectBody()
+                .jsonPath("$.code")
+                .isEqualTo("INVALID_REQUEST")
+                .jsonPath("$.message")
+                .isNotEmpty();
     }
 }

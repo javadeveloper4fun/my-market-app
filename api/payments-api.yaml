@@ -20,12 +20,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BalanceResponse'
-        '503':
-          description: Сервис временно недоступен
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
   /api/v1/payments:
     post:
       operationId: createPayment
@@ -53,12 +47,6 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '402':
           description: Недостаточно средств
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '503':
-          description: Сервис временно недоступен
           content:
             application/json:
               schema:

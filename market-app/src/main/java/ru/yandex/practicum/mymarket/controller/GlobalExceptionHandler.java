@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import ru.yandex.practicum.mymarket.dto.InvalidItemFormException;
+import ru.yandex.practicum.mymarket.service.ImageStorageService;
 import ru.yandex.practicum.mymarket.service.ImageUploadException;
 
 /**
@@ -39,7 +40,7 @@ import ru.yandex.practicum.mymarket.service.ImageUploadException;
  * тоже не обрабатывается: это исключение сервлетного стека, а превышение
  * {@code spring.webflux.multipart.max-in-memory-size} приходит как
  * {@link org.springframework.core.io.buffer.DataBufferLimitException} и
- * ловится в {@link ImageStorageService#readBytes}.
+ * ловится в {@link ImageStorageService} методом {@code readBytes}.
  */
 @ControllerAdvice
 public class GlobalExceptionHandler {

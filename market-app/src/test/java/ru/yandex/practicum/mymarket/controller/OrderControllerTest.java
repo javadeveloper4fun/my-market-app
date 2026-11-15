@@ -14,6 +14,7 @@ import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.OrderDto;
 import ru.yandex.practicum.mymarket.payments.InsufficientFundsException;
+import ru.yandex.practicum.mymarket.payments.InvalidPaymentRequestException;
 import ru.yandex.practicum.mymarket.payments.PaymentsUnavailableException;
 import ru.yandex.practicum.mymarket.service.CheckoutService;
 import ru.yandex.practicum.mymarket.service.EmptyCartException;
@@ -157,6 +158,23 @@ class OrderControllerTest {
                 .is3xxRedirection()
                 .expectHeader()
                 .location("/cart/items?paymentError=insufficient-funds");
+    }
+
+    /**
+     * Проверяет, что отклонённый платёжный запрос не выдаётся за недоступность сервиса.
+     */
+    @Test
+    void buyRedirectsToCartWhenPaymentRequestIsInvalid() {
+        when(checkoutService.checkout())
+                .thenReturn(Mono.error(new InvalidPaymentRequestException("bad amount", new IllegalStateException())));
+
+        client.post()
+                .uri("/buy")
+                .exchange()
+                .expectStatus()
+                .is3xxRedirection()
+                .expectHeader()
+                .location("/cart/items?paymentError=invalid-request");
     }
 
     /**

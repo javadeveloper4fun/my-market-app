@@ -175,4 +175,39 @@ class CartControllerTest {
                 .expectBody(String.class)
                 .value(html -> assertThat(html).contains("Сервис платежей недоступен"));
     }
+
+    /**
+     * Проверяет, что код ошибки {@code insufficient-funds} не теряется, даже
+     * если баланс успел измениться и блок предупреждения не отрисовался.
+     */
+    @Test
+    void getCartShowsMessageFromInsufficientFundsRedirect() {
+        CartPage cart = new CartPage(List.of(new ItemDto(1L, "Куртка", "", "img.jpg", 4500L, 1)), 4500L);
+        when(cartPageService.getCartView()).thenReturn(Mono.just(new CartView(cart, 10_000L, null)));
+
+        client.get()
+                .uri("/cart/items?paymentError=insufficient-funds")
+                .exchange()
+                .expectStatus()
+                .isOk()
+                .expectBody(String.class)
+                .value(html -> assertThat(html).contains("Недостаточно средств для оплаты заказа."));
+    }
+
+    /**
+     * Проверяет, что отклонённый платёжный запрос объясняется пользователю.
+     */
+    @Test
+    void getCartShowsMessageFromInvalidPaymentRequestRedirect() {
+        CartPage cart = new CartPage(List.of(new ItemDto(1L, "Куртка", "", "img.jpg", 4500L, 1)), 4500L);
+        when(cartPageService.getCartView()).thenReturn(Mono.just(new CartView(cart, 10_000L, null)));
+
+        client.get()
+                .uri("/cart/items?paymentError=invalid-request")
+                .exchange()
+                .expectStatus()
+                .isOk()
+                .expectBody(String.class)
+                .value(html -> assertThat(html).contains("сервис платежей отклонил сумму"));
+    }
 }

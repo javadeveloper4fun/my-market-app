@@ -4,7 +4,6 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.dto.CartView;
 import ru.yandex.practicum.mymarket.payments.PaymentsGateway;
-import ru.yandex.practicum.mymarket.payments.PaymentsUnavailableException;
 
 /**
  * Собирает данные страницы корзины: содержимое и баланс.
@@ -39,9 +38,6 @@ public class CartPageService {
                 .flatMap(cart -> paymentsGateway
                         .getBalance()
                         .map(balance -> new CartView(cart, balance, null))
-                        .onErrorResume(
-                                PaymentsUnavailableException.class,
-                                error -> Mono.just(new CartView(cart, null, PAYMENTS_UNAVAILABLE_MESSAGE)))
                         .onErrorResume(error -> Mono.just(new CartView(cart, null, PAYMENTS_UNAVAILABLE_MESSAGE))));
     }
 }

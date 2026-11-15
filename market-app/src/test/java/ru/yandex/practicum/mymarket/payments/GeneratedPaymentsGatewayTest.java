@@ -62,6 +62,13 @@ class GeneratedPaymentsGatewayTest {
     }
 
     @Test
+    void mapsBadRequestToInvalidPaymentRequest() {
+        server.enqueue(json(400, "{\"code\":\"INVALID_AMOUNT\",\"message\":\"bad amount\"}"));
+
+        assertThatThrownBy(() -> gateway().pay(0).block()).isInstanceOf(InvalidPaymentRequestException.class);
+    }
+
+    @Test
     void mapsServerErrorToUnavailable() {
         server.enqueue(json(500, "{\"code\":\"INTERNAL\",\"message\":\"boom\"}"));
 

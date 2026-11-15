@@ -108,6 +108,14 @@ public class CartController {
         if (view.paymentError() != null) {
             return view.paymentError();
         }
+        if ("insufficient-funds".equals(paymentError) && !view.insufficientFunds()) {
+            // Обычно причину показывает блок insufficientFunds. Сообщение нужно
+            // для гонки, когда баланс уже изменился и этот блок не отрисуется.
+            return "Недостаточно средств для оплаты заказа.";
+        }
+        if ("invalid-request".equals(paymentError)) {
+            return "Не удалось оформить заказ: сервис платежей отклонил сумму.";
+        }
         if ("payments-unavailable".equals(paymentError)) {
             return "Сервис платежей недоступен. Оформление заказа временно невозможно.";
         }

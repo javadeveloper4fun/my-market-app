@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.payments.InsufficientFundsException;
+import ru.yandex.practicum.mymarket.payments.InvalidPaymentRequestException;
 import ru.yandex.practicum.mymarket.payments.PaymentsUnavailableException;
 import ru.yandex.practicum.mymarket.service.CheckoutService;
 import ru.yandex.practicum.mymarket.service.EmptyCartException;
@@ -97,6 +98,10 @@ public class OrderController {
                 .onErrorResume(InsufficientFundsException.class, e -> {
                     LOG.warn("Покупка отменена: недостаточно средств");
                     return Mono.just("redirect:/cart/items?paymentError=insufficient-funds");
+                })
+                .onErrorResume(InvalidPaymentRequestException.class, e -> {
+                    LOG.warn("Покупка отменена: сервис платежей отклонил запрос: {}", e.getMessage());
+                    return Mono.just("redirect:/cart/items?paymentError=invalid-request");
                 })
                 .onErrorResume(PaymentsUnavailableException.class, e -> {
                     LOG.warn("Покупка отменена: сервис платежей недоступен: {}", e.getMessage());
