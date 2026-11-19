@@ -19,7 +19,9 @@
 ├── config/checkstyle/           # общий Checkstyle
 ├── market-app/                  # витрина (WebFlux, Thymeleaf, R2DBC, Redis, платежный клиент)
 ├── payments-service/            # сервис платежей (WebFlux, OpenAPI server interfaces)
+├── scripts/                     # скрипты проверки и smoke-теста
 ├── docker-compose.yml
+├── docker-compose.prebuilt.yml  # запуск из заранее собранных bootJar (fallback)
 └── build.gradle, settings.gradle, gradle.properties
 ```
 
@@ -33,24 +35,33 @@
 
 ## Сборка и тесты
 
-Полная сборка (линтеры + unit/slice/integration тесты):
+Полная сборка (линтеры + unit/slice/integration тесты), нужен запущенный Docker для Testcontainers в `market-app`:
 
 ```bash
 ./gradlew clean build
 ```
 
-Отдельно по модулям:
+По модулям (полный цикл с проверками):
 
 ```bash
-./gradlew :payments-service:test
-./gradlew :market-app:test
+./gradlew :payments-service:clean :payments-service:build
+./gradlew :market-app:clean :market-app:build
 ```
 
-Тесты `market-app` используют Testcontainers (PostgreSQL, Redis) и встроенную H2 там, где это достаточно, поэтому для полного прогона нужен запущенный Docker.
+В средах с ограниченной памятью можно запускать с одним воркером и без демона:
+
+```bash
+./gradlew --no-daemon --max-workers=1 :payments-service:clean :payments-service:build
+./gradlew --no-daemon --max-workers=1 :market-app:clean :market-app:build
+```
+
+Для Windows есть скрипт проверки/подъёма стенда: `scripts/verify-and-smoke.ps1` (PowerShell 7+, Docker, `curl.exe`).
 
 ## Запуск
 
-### Docker Compose (рекомендуется)
+### Docker Compose (рекомендуется, из клона)
+
+`docker-compose.yml` использует multi-stage Dockerfile’ы модулей: после `git clone` достаточно Docker и сети для загрузки зависимостей Gradle/базовых образов.
 
 ```bash
 docker compose up -d --build
@@ -60,7 +71,18 @@ docker compose up -d --build
 - витрина: <http://localhost:8080/items>
 - сервис платежей: <http://localhost:8081/api/v1/balance>
 
-Остановка: `docker compose down` (с данными: `docker compose down -v`).
+Остановка: `docker compose down` (с сохранением томов). Удаление данных: `docker compose down -v`.
+
+### Docker Compose из заранее собранных jar (fallback)
+
+Если при сборке образов внутри Docker недоступны репозитории Gradle/зависимостей, можно собрать bootJar на хосте и использовать prebuilt-образы:
+
+```bash
+./gradlew :payments-service:bootJar :market-app:bootJar
+docker compose -f docker-compose.yml -f docker-compose.prebuilt.yml up -d --build
+```
+
+PowerShell (Windows): `.\scripts\verify-and-smoke.ps1` (сборка + `docker compose up -d --build` + базовые smoke-проверки) или `.\scripts\verify-and-smoke.ps1 -SkipBuild` с `-f docker-compose.prebuilt.yml` при ручном запуске после сборки jar.
 
 ### Локально
 
@@ -70,6 +92,15 @@ docker compose up -d --build
 ./gradlew :payments-service:bootRun
 ./gradlew :market-app:bootRun
 ```
+
+### Smoke-проверка
+
+```bash
+curl http://localhost:8081/api/v1/balance
+curl -I http://localhost:8080/items
+```
+
+Дополнительно вручную: сценарий покупки (успех; `402` при недостатке средств — заказ не создаётся, корзина сохраняется; при недоступном `payments-service` — заказ не создаётся, показывается ошибка оплаты).
 
 ## API сервиса платежей
 
@@ -104,10 +135,11 @@ curl -X POST http://localhost:8081/api/v1/payments \
 
 - Реализация cache-aside на `ReactiveStringRedisTemplate` + JSON (`ObjectMapper`), без `@Cacheable`/`RedisCacheManager` (нужен контроль над реактивным потоком и ошибками).
 - Ключи: `market:item:{id}`, `market:items:{version}`, страницы `market:items:{version}:{search}:{sort}:{page}:{size}`.
-- TTL настраивается (`market.cache.items.ttl`, по умолчанию `PT5M`).
-- Инвалидация: удаление карточки и инкремент версии каталога при изменении товара; массовый `KEYS/SCAN` не используется.
+- TTL настраивается (`market.cache.items.ttl`, по умолчанию `PT5M`). Кеш можно отключить флагом `market.cache.enabled=false` (в большинстве тестов используется `NoOpItemCache`).
+- Версия каталога читается один раз на запрос страницы и используется в одном и том же ключе для чтения/записи. Поиск для ключа кеша нормализуется (trim, нижний регистр), сортировка приводится к каноническому значению (`NO`/`ALPHA`/`PRICE`), размер страницы ограничивается безопасным максимумом (100).
+- Инвалидация каталога: инкремент версии страниц выполняется после успешного завершения транзакции сохранения товара (`createItem`/`saveWithImage`); массовый `KEYS/SCAN` не используется. Отдельный метод инвалидации карточки в production-сценариях изменения/удаления товара сейчас не вызывается (таких эндпоинтов нет).
 - `count` (количество в корзине) **всегда** читается из БД (`cart_item`), в кеш кладутся только метаданные товара/страницы.
-- При ошибке Redis кеш работает fail-open: чтение деградирует в промах, запись/инвалидация не ломают запрос (данные берутся из БД).
+- При ошибке Redis или таймауте кеш работает fail-open: чтение деградирует в промах, запись/инвалидация не ломают запрос (данные берутся из БД). Для быстрого fail-open настроены короткие таймауты Redis (`1s`).
 
 ## OpenAPI и генерация кода
 
@@ -118,14 +150,7 @@ curl -X POST http://localhost:8081/api/v1/payments \
 ## Ограничения
 
 - Баланс платежей хранится в памяти и сбрасывается при перезапуске `payments-service` (начальное значение `PAYMENTS_INITIAL_BALANCE`, по умолчанию 10000).
-- Компенсация/`refund` и идемпотентность платежей не реализованы: если списание прошло, а сохранение заказа упало, состояние фиксируется как требующая разбора ситуация (см. логи), автоматического отката нет.
+- Компенсация/`refund` и идемпотентность платежей не реализованы: если списание прошло, а сохранение заказа упало, состояние требует разбора; в логах фиксируется ошибка с маркером `PAYMENT_SUCCEEDED_ORDER_FAILED` (сумма и состав заказа), автоматического отката нет.
 - `count` в корзине не кешируется специально, чтобы не расходиться с БД; кеш каталога может быть кратковременно stale до TTL/инвалидации.
 - Один пользовательский сценарий (без авторизации/раздельных корзин), как и в предыдущем спринте.
-
-## Troubleshooting
-
-- **Redis недоступен** — витрина продолжает работать, читая из БД (fail-open); проверьте `SPRING_DATA_REDIS_HOST/PORT` и `docker compose ps`.
-- **payments-service недоступен** — баланс/покупка недоступны, корзина показывает сообщение о недоступности платежей; заказ не создаётся.
-- **402 при покупке** — недостаточно средств, корзина сохраняется.
-- **Docker healthcheck payments-service** — образ должен содержать `curl` (используется в compose).
-- **Сборка OpenAPI/Gradle** — при проблемах с кэшем конфигурации Gradle очистите `.gradle`/`build` и пересоберите; сгенерированный клиент может давать deprecation warnings от зависимостей генератора.
+- В Docker Compose для Redis задан лимит памяти `256mb` и политика `volatile-lru`, чтобы ключ версии каталога без TTL не вытеснялся.
