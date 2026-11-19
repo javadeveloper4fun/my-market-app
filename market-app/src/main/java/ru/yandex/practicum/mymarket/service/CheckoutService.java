@@ -1,5 +1,8 @@
 package ru.yandex.practicum.mymarket.service;
 
+import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.payments.PaymentsGateway;
@@ -20,6 +23,8 @@ import ru.yandex.practicum.mymarket.payments.PaymentsGateway;
 @Service
 public class CheckoutService {
 
+    private static final Logger LOG = LoggerFactory.getLogger(CheckoutService.class);
+
     private final OrderService orderService;
     private final PaymentsGateway paymentsGateway;
 
@@ -37,6 +42,19 @@ public class CheckoutService {
         return orderService
                 .prepareOrder()
                 .flatMap(prepared -> paymentsGateway.pay(prepared.total()).thenReturn(prepared))
-                .flatMap(orderService::placeOrder);
+                .flatMap(prepared -> orderService
+                        .placeOrder(prepared)
+                        .onErrorResume(error -> {
+                            String itemIds = prepared.items().stream()
+                                    .map(item -> String.valueOf(item.getItemId()))
+                                    .collect(Collectors.joining(","));
+                            LOG.error(
+                                    "PAYMENT_SUCCEEDED_ORDER_FAILED amount={} itemIds=[{}] items={}",
+                                    prepared.total(),
+                                    itemIds,
+                                    prepared.items().size(),
+                                    error);
+                            return Mono.error(error);
+                        }));
     }
 }
