@@ -60,4 +60,11 @@ public interface ItemCache {
      * @return завершение операции
      */
     Mono<Void> invalidateItem(long id);
+
+    /**
+     * Возвращает текущую версию каталога для ключей страниц.
+     *
+     * @return версия каталога
+     */
+    Mono<Long> catalogVersion();
 }

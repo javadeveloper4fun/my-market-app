@@ -99,18 +99,20 @@ public class ItemService {
         // вместо первой страницы.
         int normalizedPageNumber = pageIndex + 1;
 
-        ItemsPageKey cacheKey = new ItemsPageKey(0, searchForView, canonicalSort, normalizedPageNumber, pageLimit);
-
-        // Cache-aside: сначала кеш, при промахе — база и запись в кеш. Версию
-        // каталога подставляет реализация кеша, поэтому в ключе здесь ноль.
-        return itemCache
-                .getPage(cacheKey)
-                .flatMap(cachedPage -> cachedPage
-                        .map(page -> Mono.just(page))
-                        .orElseGet(() -> loadItemsPage(querySearch, canonicalSort, pageLimit, offset)
-                                .flatMap(page ->
-                                        itemCache.putPage(cacheKey, page).thenReturn(page))))
-                .flatMap(page -> withCartCounts(page, searchForView, canonicalSort, normalizedPageNumber, pageLimit));
+        // Cache-aside: версия каталога читается один раз, чтобы чтение и запись
+        // страницы использовали один и тот же ключ.
+        return itemCache.catalogVersion().defaultIfEmpty(0L).flatMap(version -> {
+            ItemsPageKey cacheKey =
+                    new ItemsPageKey(version, searchForView, canonicalSort, normalizedPageNumber, pageLimit);
+            return itemCache
+                    .getPage(cacheKey)
+                    .flatMap(cachedPage -> cachedPage
+                            .map(page -> Mono.just(page))
+                            .orElseGet(() -> loadItemsPage(querySearch, canonicalSort, pageLimit, offset)
+                                    .flatMap(page -> itemCache.putPage(cacheKey, page).thenReturn(page))))
+                    .flatMap(page ->
+                            withCartCounts(page, searchForView, canonicalSort, normalizedPageNumber, pageLimit));
+        });
     }
 
     /**

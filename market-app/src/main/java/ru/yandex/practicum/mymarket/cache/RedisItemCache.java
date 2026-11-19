@@ -67,8 +67,8 @@ public class RedisItemCache implements ItemCache {
 
     @Override
     public Mono<Optional<CachedItemsPage>> getPage(ItemsPageKey key) {
-        return version()
-                .flatMap(version -> redis.opsForValue().get(keyWithVersion(key, version)))
+        return redis.opsForValue()
+                .get(key.toRedisKey())
                 .flatMap(json -> deserialize(json, CachedItemsPage.class))
                 .map(Optional::of)
                 .defaultIfEmpty(Optional.empty())
@@ -80,9 +80,8 @@ public class RedisItemCache implements ItemCache {
 
     @Override
     public Mono<Void> putPage(ItemsPageKey key, CachedItemsPage page) {
-        return version()
-                .flatMap(version -> serialize(page)
-                        .flatMap(json -> redis.opsForValue().set(keyWithVersion(key, version), json, properties.ttl())))
+        return serialize(page)
+                .flatMap(json -> redis.opsForValue().set(key.toRedisKey(), json, properties.ttl()))
                 .then()
                 .onErrorResume(error -> {
                     LOG.warn("Не удалось сохранить страницу каталога в Redis: {}", error.getMessage());
@@ -106,28 +105,13 @@ public class RedisItemCache implements ItemCache {
         });
     }
 
-    /**
-     * Читает текущую версию каталога.
-     *
-     * @return версия, 0 если ключа ещё нет
-     */
-    private Mono<Long> version() {
+    @Override
+    public Mono<Long> catalogVersion() {
         return redis.opsForValue()
                 .get(ItemsPageKey.versionKey())
                 .map(Long::parseLong)
                 .defaultIfEmpty(0L)
                 .onErrorReturn(0L);
-    }
-
-    /**
-     * Подставляет версию в ключ страницы.
-     *
-     * @param key     исходный ключ
-     * @param version актуальная версия
-     * @return ключ Redis
-     */
-    private String keyWithVersion(ItemsPageKey key, long version) {
-        return new ItemsPageKey(version, key.search(), key.sort(), key.page(), key.pageSize()).toRedisKey();
     }
 
     /**

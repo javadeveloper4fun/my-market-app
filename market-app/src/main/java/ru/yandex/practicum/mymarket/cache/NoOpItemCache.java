@@ -41,4 +41,9 @@ public class NoOpItemCache implements ItemCache {
     public Mono<Void> invalidateItem(long id) {
         return Mono.empty();
     }
+
+    @Override
+    public Mono<Long> catalogVersion() {
+        return Mono.just(0L);
+    }
 }
