@@ -26,13 +26,18 @@ public record Paging(int pageSize, int pageNumber, boolean hasPrevious, boolean 
      * @param totalItems   всего товаров под поисковый запрос
      * @return состояние навигации
      */
+    private static final int MAX_PAGE_SIZE = 100;
+
     public static Paging of(int pageSize, int pageNumber, long totalItems) {
+        int normalizedPageSize = Math.min(Math.max(pageSize, 1), MAX_PAGE_SIZE);
+        int normalizedPageNumber = Math.max(pageNumber, 1);
         // Произведение считается в long: при больших номерах страницы int
         // переполнялся, shown становился отрицательным, и hasNext оставался
         // истинным навсегда. Наблюдалось это так: на странице 2147483647
         // кнопка перехода вперёд вела на страницу -2147483648.
-        long shown = (long) pageNumber * pageSize;
-        return new Paging(pageSize, pageNumber, pageNumber > 1, shown < totalItems);
+        long shown = (long) normalizedPageNumber * normalizedPageSize;
+        return new Paging(
+                normalizedPageSize, normalizedPageNumber, normalizedPageNumber > 1, shown < totalItems);
     }
 
     /**

@@ -92,7 +92,7 @@ public class ItemService {
                     default -> "NO";
                 };
         int pageIndex = Math.max(pageNumber - 1, 0);
-        int pageLimit = Math.max(pageSize, 1);
+        int pageLimit = Math.min(Math.max(pageSize, 1), 100);
         long offset = (long) pageIndex * pageLimit;
         // В модель идёт нормализованный номер, а не присланный. При pageNumber = 0
         // смещение считается верно, но шаблон показал бы страницу 0 и «вперёд»
