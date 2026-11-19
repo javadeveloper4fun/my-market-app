@@ -25,15 +25,18 @@ class BalanceAccountTest {
     void decreasesBalanceOnSuccessfulPayment() {
         BalanceAccount account = new BalanceAccount(new PaymentsProperties(10_000L));
 
-        assertThat(account.withdraw(1500L)).isTrue();
+        assertThat(account.withdraw(1500L)).isEqualTo(8500L);
         assertThat(account.getBalance()).isEqualTo(8500L);
     }
 
     @Test
-    void returnsFalseOnInsufficientFunds() {
+    void throwsOnInsufficientFunds() {
         BalanceAccount account = new BalanceAccount(new PaymentsProperties(1000L));
 
-        assertThat(account.withdraw(1500L)).isFalse();
+        assertThatThrownBy(() -> account.withdraw(1500L))
+                .isInstanceOf(InsufficientFundsException.class)
+                .hasMessageContaining("1500")
+                .hasMessageContaining("1000");
         assertThat(account.getBalance()).isEqualTo(1000L);
     }
 

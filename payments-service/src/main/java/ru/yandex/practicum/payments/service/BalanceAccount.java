@@ -50,19 +50,21 @@ public class BalanceAccount {
      * Списывает сумму, если средств достаточно.
      *
      * @param amount сумма в целых рублях, должна быть положительной
-     * @return {@code true}, если списание выполнено
+     * @return остаток после успешного списания
+     * @throws InsufficientFundsException если средств недостаточно
      */
-    public boolean withdraw(long amount) {
+    public long withdraw(long amount) {
         if (amount <= 0) {
             throw new IllegalArgumentException("Сумма платежа должна быть положительной");
         }
         while (true) {
             long current = balance.get();
             if (current < amount) {
-                return false;
+                throw new InsufficientFundsException(amount, current);
             }
-            if (balance.compareAndSet(current, current - amount)) {
-                return true;
+            long remaining = current - amount;
+            if (balance.compareAndSet(current, remaining)) {
+                return remaining;
             }
         }
     }

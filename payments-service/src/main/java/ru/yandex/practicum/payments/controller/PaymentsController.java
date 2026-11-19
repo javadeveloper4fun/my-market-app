@@ -44,10 +44,8 @@ public class PaymentsController implements BalanceApi, PaymentsApi {
             if (amount == null || amount <= 0) {
                 return Mono.error(new InvalidAmountException());
             }
-            if (!account.withdraw(amount)) {
-                return Mono.error(new InsufficientFundsException(amount, account.getBalance()));
-            }
-            return Mono.just(ResponseEntity.ok(new PaymentResponse(amount, account.getBalance())));
+            long remaining = account.withdraw(amount);
+            return Mono.just(ResponseEntity.ok(new PaymentResponse(amount, remaining)));
         });
     }
 }
