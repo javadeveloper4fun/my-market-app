@@ -1,0 +1,15 @@
+services:
+  market-app:
+    build:
+      context: .
+      dockerfile: market-app/Dockerfile.prebuilt
+  payments-service:
+    build:
+      context: .
+      dockerfile: payments-service/Dockerfile.prebuilt
+    healthcheck:
+      test: ["CMD-SHELL", "bash -lc 'exec 3<>/dev/tcp/127.0.0.1/8081'"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
