@@ -166,6 +166,70 @@ class ItemRepositoryPostgreSqlTest extends DatabaseResetTest {
     }
 
     /**
+     * Проверяет, что уменьшение количества затрагивает только выбранную позицию.
+     *
+     * <p>Запрос ограничен {@code item_id}; без этого условия уменьшились бы все
+     * позиции корзины. Возвращённое число строк подтверждает, что обновление
+     * затронуло ровно одну позицию.
+     */
+    @Test
+    void decreaseCountUpdatesOnlyRequestedCartItem() {
+        Item jacket = save(new Item("Куртка", "Тёплая куртка", "images/jacket.jpg", new BigDecimal("4500.00")));
+        Item hat = save(new Item("Шапка", "Тёплая шапка", "images/boots.jpg", new BigDecimal("999.99")));
+        cartItemRepository.save(new CartItem(jacket.getId(), 5)).block();
+        cartItemRepository.save(new CartItem(hat.getId(), 4)).block();
+
+        assertThat(cartItemRepository.decreaseCount(jacket.getId(), 2).block()).isEqualTo(1);
+
+        CartItem jacketPosition =
+                cartItemRepository.findByItemId(jacket.getId()).block();
+        CartItem hatPosition = cartItemRepository.findByItemId(hat.getId()).block();
+        assertThat(jacketPosition).isNotNull();
+        assertThat(jacketPosition.getCount()).isEqualTo(3);
+        assertThat(hatPosition).isNotNull();
+        assertThat(hatPosition.getCount()).isEqualTo(4);
+    }
+
+    /**
+     * Проверяет удаление только неположительных остатков.
+     *
+     * <p>Сервис оплаты уменьшает количество на оплаченное число и затем удаляет
+     * позицию с остатком {@code <= 0}. Здесь одна позиция уходит в минус, а
+     * вторая остаётся положительной: удалиться должна только первая.
+     */
+    @Test
+    void deleteIfEmptyRemovesOnlyNonPositivePositions() {
+        Item jacket = save(new Item("Куртка", "Тёплая куртка", "images/jacket.jpg", new BigDecimal("4500.00")));
+        Item hat = save(new Item("Шапка", "Тёплая шапка", "images/boots.jpg", new BigDecimal("999.99")));
+        cartItemRepository.save(new CartItem(jacket.getId(), 1)).block();
+        cartItemRepository.save(new CartItem(hat.getId(), 3)).block();
+
+        cartItemRepository.decreaseCount(jacket.getId(), 2).block();
+        cartItemRepository.decreaseCount(hat.getId(), 1).block();
+
+        assertThat(cartItemRepository.deleteIfEmpty(jacket.getId()).block()).isEqualTo(1);
+        assertThat(cartItemRepository.deleteIfEmpty(hat.getId()).block()).isZero();
+
+        assertThat(cartItemRepository.findByItemId(jacket.getId()).block()).isNull();
+        CartItem hatPosition = cartItemRepository.findByItemId(hat.getId()).block();
+        assertThat(hatPosition).isNotNull();
+        assertThat(hatPosition.getCount()).isEqualTo(2);
+    }
+
+    /**
+     * Проверяет, что уменьшение отсутствующей позиции не меняет данные.
+     *
+     * <p>Возвращённое число строк равно нулю: сервис может отличить
+     * фактическое обновление от холостого запроса.
+     */
+    @Test
+    void decreaseCountReturnsZeroWhenPositionIsAbsent() {
+        Item jacket = save(new Item("Куртка", "Тёплая куртка", "images/jacket.jpg", new BigDecimal("4500.00")));
+
+        assertThat(cartItemRepository.decreaseCount(jacket.getId(), 1).block()).isZero();
+    }
+
+    /**
      * Создаёт и сохраняет товар.
      *
      * @param item товар для сохранения
