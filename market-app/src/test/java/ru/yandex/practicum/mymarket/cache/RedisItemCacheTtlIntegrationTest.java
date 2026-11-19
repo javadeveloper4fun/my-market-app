@@ -33,7 +33,7 @@ import ru.yandex.practicum.mymarket.support.DatabaseResetTest;
 class RedisItemCacheTtlIntegrationTest extends DatabaseResetTest {
 
     @Container
-    static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7.4-alpine").withExposedPorts(6379);
+    static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7.4.2-bookworm").withExposedPorts(6379);
 
     @DynamicPropertySource
     static void redisProperties(DynamicPropertyRegistry registry) {

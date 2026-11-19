@@ -31,13 +31,13 @@ import ru.yandex.practicum.mymarket.support.DatabaseResetTest;
  * карточки. Контейнер поднимается Testcontainers, поэтому тест пропускается,
  * если Docker недоступен.
  */
-@SpringBootTest(properties = "market.cache.enabled=true")
+@SpringBootTest(properties = {"market.cache.enabled=true", "market.cache.items.ttl=PT1S"})
 @ActiveProfiles("test")
 @Testcontainers(disabledWithoutDocker = true)
 class RedisItemCacheIntegrationTest extends DatabaseResetTest {
 
     @Container
-    static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7.4-alpine").withExposedPorts(6379);
+    static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7.4.2-bookworm").withExposedPorts(6379);
 
     @DynamicPropertySource
     static void redisProperties(DynamicPropertyRegistry registry) {
