@@ -68,4 +68,28 @@ class PagingTest {
         assertThat(last.hasNext()).isFalse();
         assertThat(last.nextPageNumber()).isEqualTo(3);
     }
+
+    /**
+     * Проверяет зажим размера страницы сверху: произвольное значение из URL не
+     * должно вытягивать весь каталог и раздувать значение в кеше.
+     */
+    @Test
+    void clampsPageSizeToMaximum() {
+        Paging paging = Paging.of(1000, 1, 5000);
+
+        assertThat(paging.pageSize()).isEqualTo(100);
+    }
+
+    /**
+     * Проверяет зажим снизу: нулевые параметры из URL превращаются в первую
+     * страницу с минимальным размером.
+     */
+    @Test
+    void clampsNonPositivePageSizeAndNumber() {
+        Paging paging = Paging.of(0, 0, 10);
+
+        assertThat(paging.pageSize()).isEqualTo(1);
+        assertThat(paging.pageNumber()).isEqualTo(1);
+        assertThat(paging.hasPrevious()).isFalse();
+    }
 }

@@ -16,18 +16,24 @@ package ru.yandex.practicum.mymarket.dto;
 public record Paging(int pageSize, int pageNumber, boolean hasPrevious, boolean hasNext) {
 
     /**
-     * Собирает навигацию из границ выборки и общего числа товаров.
+     * Максимальный размер страницы: совпадает с наибольшим значением в UI.
      *
-     * <p>Нумерация для шаблонов начинается с единицы, тогда как смещение в
-     * запросе считается с нуля, поэтому номер страницы увеличен на один.
-     *
-     * @param pageSize     товаров на странице
-     * @param pageNumber   номер страницы, начиная с 1
-     * @param totalItems   всего товаров под поисковый запрос
-     * @return состояние навигации
+     * <p>Ограничение защищает и выборку, и кеш: произвольный {@code pageSize}
+     * из URL иначе вытянул бы весь каталог и положил бы в Redis огромное значение.
      */
     private static final int MAX_PAGE_SIZE = 100;
 
+    /**
+     * Собирает навигацию из границ выборки и общего числа товаров.
+     *
+     * <p>Размер страницы зажимается в диапазон {@code 1..MAX_PAGE_SIZE}, номер —
+     * не меньше единицы: параметры приходят из URL и могут быть любыми.
+     *
+     * @param pageSize   товаров на странице
+     * @param pageNumber номер страницы, начиная с 1
+     * @param totalItems всего товаров под поисковый запрос
+     * @return состояние навигации
+     */
     public static Paging of(int pageSize, int pageNumber, long totalItems) {
         int normalizedPageSize = Math.min(Math.max(pageSize, 1), MAX_PAGE_SIZE);
         int normalizedPageNumber = Math.max(pageNumber, 1);
