@@ -81,7 +81,16 @@ public class ItemService {
     public Mono<ItemsPage> getItems(String search, String sort, int pageNumber, int pageSize) {
         String searchForView = (search != null) ? search.trim() : "";
         String querySearch = !searchForView.isBlank() ? escapeLike(searchForView) : null;
-        String normalizedSort = (sort == null || sort.isBlank()) ? "NO" : sort;
+        String requestedSort = (sort == null || sort.isBlank()) ? "NO" : sort;
+        // Ключ кеша, запрос в базу и модель используют одно каноническое значение,
+        // иначе страница с нестандартным регистром сортировки может сохраниться
+        // под каноническим ключом в неверном порядке.
+        String canonicalSort =
+                switch (requestedSort.toUpperCase(Locale.ROOT)) {
+                    case "ALPHA" -> "ALPHA";
+                    case "PRICE" -> "PRICE";
+                    default -> "NO";
+                };
         int pageIndex = Math.max(pageNumber - 1, 0);
         int pageLimit = Math.max(pageSize, 1);
         long offset = (long) pageIndex * pageLimit;
@@ -90,17 +99,7 @@ public class ItemService {
         // вместо первой страницы.
         int normalizedPageNumber = pageIndex + 1;
 
-        // Ключ кеша не должен размножаться из-за регистра и неизвестных значений:
-        // база для них всё равно применяет сортировку по умолчанию, и отдельная
-        // запись кеша на «alpha» и «NO» означала бы один и тот же результат
-        // под двумя ключами.
-        String cacheSort =
-                switch (normalizedSort.toUpperCase(Locale.ROOT)) {
-                    case "ALPHA" -> "ALPHA";
-                    case "PRICE" -> "PRICE";
-                    default -> "NO";
-                };
-        ItemsPageKey cacheKey = new ItemsPageKey(0, searchForView, cacheSort, normalizedPageNumber, pageLimit);
+        ItemsPageKey cacheKey = new ItemsPageKey(0, searchForView, canonicalSort, normalizedPageNumber, pageLimit);
 
         // Cache-aside: сначала кеш, при промахе — база и запись в кеш. Версию
         // каталога подставляет реализация кеша, поэтому в ключе здесь ноль.
@@ -108,10 +107,10 @@ public class ItemService {
                 .getPage(cacheKey)
                 .flatMap(cachedPage -> cachedPage
                         .map(page -> Mono.just(page))
-                        .orElseGet(() -> loadItemsPage(querySearch, normalizedSort, pageLimit, offset)
+                        .orElseGet(() -> loadItemsPage(querySearch, canonicalSort, pageLimit, offset)
                                 .flatMap(page ->
                                         itemCache.putPage(cacheKey, page).thenReturn(page))))
-                .flatMap(page -> withCartCounts(page, searchForView, normalizedSort, normalizedPageNumber, pageLimit));
+                .flatMap(page -> withCartCounts(page, searchForView, canonicalSort, normalizedPageNumber, pageLimit));
     }
 
     /**
