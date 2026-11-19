@@ -6,8 +6,9 @@ package ru.yandex.practicum.mymarket.service;
  * <p>Выделена в отдельный тип, чтобы {@code OrderController} отличал это ожидаемое
  * состояние от любой другой {@code RuntimeException}. {@code EmptyCartException}
  * отделён от {@code IllegalStateException}, поэтому настоящая ошибка не растворяется
- * в редиректе: {@code OrderController.buy()} ловит только {@code EmptyCartException},
- * а любая непредвиденная ошибка обрабатывается {@code GlobalExceptionHandler}.
+ * в редиректе: {@code OrderController.buy()} перехватывает это исключение и
+ * ожидаемые ошибки оплаты по отдельности, а любая непредвиденная ошибка
+ * обрабатывается {@code GlobalExceptionHandler}.
  *
  * <p>В отличие от ошибок, доходящих до {@code GlobalExceptionHandler}, это
  * исключение в лог не попадает: его перехватывает {@code onErrorResume} в
