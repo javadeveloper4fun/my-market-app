@@ -3,6 +3,14 @@ package ru.yandex.practicum.payments.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import ru.yandex.practicum.payments.config.PaymentsProperties;
 
@@ -27,6 +35,52 @@ class BalanceAccountTest {
 
         assertThat(account.withdraw(1500L)).isEqualTo(8500L);
         assertThat(account.getBalance()).isEqualTo(8500L);
+    }
+
+    /**
+     * Проверяет, что одновременные списания не уводят баланс в минус.
+     *
+     * <p>Все потоки стартуют по одному сигналу и пытаются списать по 1000 при
+     * балансе 10 000. Успешных списаний должно быть ровно десять, остальные
+     * получают отказ, а итоговый баланс — ноль.
+     */
+    @Test
+    void withdrawsConcurrentlyWithoutOverdrawing() throws Exception {
+        int threads = 32;
+        long amount = 1_000L;
+        BalanceAccount account = new BalanceAccount(new PaymentsProperties(10_000L));
+        CountDownLatch start = new CountDownLatch(1);
+        AtomicInteger successes = new AtomicInteger();
+        AtomicInteger failures = new AtomicInteger();
+        ExecutorService executor = Executors.newFixedThreadPool(threads);
+        List<Future<?>> futures = new ArrayList<>();
+        try {
+            for (int i = 0; i < threads; i++) {
+                futures.add(executor.submit(() -> {
+                    if (!start.await(5, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("Потоки не стартовали одновременно");
+                    }
+                    try {
+                        account.withdraw(amount);
+                        successes.incrementAndGet();
+                    } catch (InsufficientFundsException expected) {
+                        failures.incrementAndGet();
+                    }
+                    return null;
+                }));
+            }
+            start.countDown();
+            for (Future<?> future : futures) {
+                future.get(5, TimeUnit.SECONDS);
+            }
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertThat(successes.get()).isEqualTo(10);
+        assertThat(failures.get()).isEqualTo(22);
+        assertThat(successes.get() + failures.get()).isEqualTo(threads);
+        assertThat(account.getBalance()).isZero();
     }
 
     @Test

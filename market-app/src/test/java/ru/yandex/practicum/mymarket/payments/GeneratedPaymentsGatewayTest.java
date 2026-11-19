@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
@@ -75,9 +77,23 @@ class GeneratedPaymentsGatewayTest {
         assertThatThrownBy(() -> gateway().pay(1500).block()).isInstanceOf(PaymentsUnavailableException.class);
     }
 
+    @Test
+    void mapsTimeoutToUnavailable() {
+        server.enqueue(json(200, "{\"amount\":1500,\"balance\":6000}").setBodyDelay(2, TimeUnit.SECONDS));
+
+        assertThatThrownBy(() -> gateway(Duration.ofMillis(200)).pay(1500).block())
+                .isInstanceOf(PaymentsUnavailableException.class)
+                .hasMessageContaining("вовремя")
+                .hasCauseInstanceOf(TimeoutException.class);
+    }
+
     private GeneratedPaymentsGateway gateway() {
+        return gateway(Duration.ofSeconds(2));
+    }
+
+    private GeneratedPaymentsGateway gateway(Duration timeout) {
         return new GeneratedPaymentsGateway(
-                new PaymentsProperties(server.url("/").toString(), Duration.ofSeconds(2)));
+                new PaymentsProperties(server.url("/").toString(), timeout));
     }
 
     private MockResponse json(int status, String body) {
