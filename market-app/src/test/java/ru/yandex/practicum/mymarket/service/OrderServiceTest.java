@@ -88,8 +88,8 @@ class OrderServiceTest extends DatabaseResetTest {
 
     @Test
     void buyCreatesOrderFromCartAndClearsCart() {
-        Item item1 = saveItem("Тестовая куртка", "Зимняя", "1000");
-        Item item2 = saveItem("Тестовый рюкзак", "Городской", "2000");
+        Item item1 = saveItem("Тестовая куртка", "Тёплая", "1000");
+        Item item2 = saveItem("Тестовые кроссовки", "Удобные", "2000");
         cartItemRepository.save(new CartItem(item1.getId(), 2)).block();
         cartItemRepository.save(new CartItem(item2.getId(), 1)).block();
 
@@ -104,6 +104,32 @@ class OrderServiceTest extends DatabaseResetTest {
         assertThat(savedItems)
                 .allSatisfy(saved -> assertThat(saved.getOrderId()).isEqualTo(orderId));
         assertThat(cartItemRepository.findAll().collectList().block()).isEmpty();
+    }
+
+    @Test
+    void placeOrderKeepsCartQuantityAddedAfterPreparation() {
+        Item item = saveItem("Test item", "Desc", "1000");
+        cartItemRepository.save(new CartItem(item.getId(), 2)).block();
+
+        PreparedOrder prepared = orderService.prepareOrder().block();
+
+        CartItem changed = cartItemRepository.findByItemId(item.getId()).block();
+        changed.setCount(3);
+        cartItemRepository.save(changed).block();
+
+        long orderId = orderService.placeOrder(prepared).block();
+
+        List<OrderItem> savedItems = orderItemRepository
+                .findAllByOrderIdIn(List.of(orderId))
+                .collectList()
+                .block();
+        assertThat(savedItems).singleElement().satisfies(saved -> {
+            assertThat(saved.getItemId()).isEqualTo(item.getId());
+            assertThat(saved.getCount()).isEqualTo(2);
+        });
+        CartItem remaining = cartItemRepository.findByItemId(item.getId()).block();
+        assertThat(remaining).isNotNull();
+        assertThat(remaining.getCount()).isEqualTo(1);
     }
 
     /**
