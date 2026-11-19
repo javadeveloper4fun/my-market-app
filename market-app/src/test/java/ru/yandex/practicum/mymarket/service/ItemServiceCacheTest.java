@@ -10,12 +10,13 @@ import static org.mockito.Mockito.when;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.reactive.TransactionalOperator;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.cache.CachedItem;
@@ -49,8 +50,20 @@ class ItemServiceCacheTest {
     @Mock
     private ItemCache itemCache;
 
-    @InjectMocks
+    @Mock
+    private TransactionalOperator transactionalOperator;
+
     private ItemService itemService;
+
+    @BeforeEach
+    @SuppressWarnings("unchecked")
+    void setUp() {
+        org.mockito.Mockito.lenient()
+                .when(transactionalOperator.transactional(any(Mono.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        itemService = new ItemService(
+                itemRepository, cartItemRepository, imageStorageService, itemCache, transactionalOperator);
+    }
 
     @Test
     void cardIsReadFromCacheAndCountFromDatabase() {
