@@ -54,8 +54,9 @@ services:
       PAYMENTS_INITIAL_BALANCE: 10000
     ports:
       - "8081:8081"
+    # Actuator healthcheck не зависит от бизнес-состояния баланса.
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8081/api/v1/balance >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8081/actuator/health >/dev/null || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 12
