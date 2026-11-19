@@ -122,18 +122,25 @@ tasks.register('patchGeneratedPaymentsClient') {
             throw new GradleException("Generated ApiClient.java not found for patch: ${file}")
         }
         def text = file.getText('UTF-8')
-        if (!text.contains('defaultHeaders.containsKey(name)')) {
-            throw new GradleException("Expected defaultHeaders.containsKey(name) not found in generated ApiClient")
+        def patched = text
+        [
+            ['defaultHeaders.containsKey(name)', 'defaultHeaders.containsHeader(name)'],
+            ['headers.entrySet()', 'headers.headerSet()']
+        ].each { from, to ->
+            if (patched.contains(from)) {
+                patched = patched.replace(from, to)
+            } else if (!patched.contains(to)) {
+                throw new GradleException(
+                    "patchGeneratedPaymentsClient: в ApiClient.java не найден ни '${from}', ни '${to}'. " +
+                    "Шаблоны OpenAPI Generator изменились — патч нужно пересмотреть.")
+            }
         }
-        if (!text.contains('headers.entrySet()')) {
-            throw new GradleException("Expected headers.entrySet() not found in generated ApiClient")
-        }
-        text = text.replace('defaultHeaders.containsKey(name)', 'defaultHeaders.containsHeader(name)')
-        text = text.replace('headers.entrySet()', 'headers.headerSet()')
-        if (text.contains('defaultHeaders.containsKey(name)') || text.contains('headers.entrySet()')) {
+        if (patched.contains('defaultHeaders.containsKey(name)') || patched.contains('headers.entrySet()')) {
             throw new GradleException("Generated ApiClient patch was not fully applied")
         }
-        file.setText(text, 'UTF-8')
+        if (patched != text) {
+            file.setText(patched, 'UTF-8')
+        }
     }
 }
 

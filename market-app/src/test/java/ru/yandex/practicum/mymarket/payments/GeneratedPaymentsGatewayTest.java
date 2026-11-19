@@ -79,7 +79,7 @@ class GeneratedPaymentsGatewayTest {
 
     @Test
     void mapsTimeoutToUnavailable() {
-        server.enqueue(json(200, "{\"amount\":1500,\"balance\":6000}").setBodyDelay(2, TimeUnit.SECONDS));
+        server.enqueue(json(200, "{\"amount\":1500,\"balance\":6000}").setBodyDelay(500, TimeUnit.MILLISECONDS));
 
         assertThatThrownBy(() -> gateway(Duration.ofMillis(200)).pay(1500).block())
                 .isInstanceOf(PaymentsUnavailableException.class)
