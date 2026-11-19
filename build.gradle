@@ -39,10 +39,13 @@ subprojects {
 
     tasks.withType(Javadoc).configureEach {
         options.encoding = 'UTF-8'
+        exclude 'ru/yandex/practicum/payments/client/**'
+        exclude 'ru/yandex/practicum/payments/api/**'
+        exclude 'ru/yandex/practicum/payments/model/**'
     }
 
-    // Javadoc проверяет ссылки и импорты, которые не ловит компилятор.
-    // Без этой связи битая ссылка снова попадёт в сборку незамеченной.
+    // Javadoc проверяет сборку в check, чтобы не копить ошибки.
+    // Сгенерированные пакеты OpenAPI исключены: это сторонний код.
     tasks.named('check') {
         dependsOn tasks.named('javadoc')
     }
