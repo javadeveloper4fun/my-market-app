@@ -227,21 +227,19 @@ public class ItemService {
         // будет, а объект в хранилище уже будет, и удалять его придётся отдельно.
         return imageStorageService
                 .upload(image)
-                .flatMap(key ->
-                        transactionalOperator.transactional(saveWithImageInternal(title, description, price, key)));
+                .flatMap(key -> transactionalOperator
+                        .transactional(saveWithImageInternal(title, description, price, key))
+                        .flatMap(dto -> itemCache.invalidatePages().thenReturn(dto)));
     }
 
     /**
-     * Сохраняет товар в БД с уже полученным ключом картинки внутри транзакции.
+     * Сохраняет товар в БД с уже полученным ключом картинки и обновляет кеш каталога.
      *
      * <p>Транзакция открывается только на операцию записи в базу. Загрузка в S3
      * уже выполнена до вызова этого метода, поэтому соединение с БД не удерживается
-     * во время сетевого вызова к хранилищу.
-     *
-     * <p>Тема 4/11 «Автоконфигурация и тестирование Spring WebFlux», урок 1/4:
-     * {@code @Transactional} на реактивном стеке работает через
-     * {@code R2dbcTransactionManager} — транзакция открывается при подписке на
-     * возвращённый {@code Mono} и закрывается по его завершении.
+     * во время сетевого вызова к хранилищу. Инвалидация кеша выполняется после
+     * успешного завершения транзакции, чтобы параллельное чтение не заполняло кеш
+     * незакоммиченными данными.
      *
      * @param title       название товара
      * @param description описание товара
@@ -249,18 +247,22 @@ public class ItemService {
      * @param key         ключ уже загруженной в S3 картинки
      * @return созданный товар; количество в корзине равно нулю
      */
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public Mono<ItemDto> saveWithImage(String title, String description, long price, String key) {
-        return saveWithImageInternal(title, description, price, key);
+        if (price <= 0) {
+            return Mono.error(new InvalidItemFormException("Цена товара должна быть больше нуля"));
+        }
+        return transactionalOperator
+                .transactional(saveWithImageInternal(title, description, price, key))
+                .flatMap(dto -> itemCache.invalidatePages().thenReturn(dto));
     }
 
     /**
-     * Сохраняет товар и инвалидирует кеш в уже открытой транзакции.
+     * Сохраняет товар в уже открытой транзакции.
      *
      * <p>Метод не аннотирован {@code @Transactional} намеренно: его вызывают
-     * либо из {@link #saveWithImage(String, String, long, String)} через прокси,
-     * либо из {@link #createItem(String, String, long, FilePart)} внутри
-     * {@link TransactionalOperator}. В обоих случаях транзакция уже открыта.
+     * внутри {@link TransactionalOperator}. Инвалидация кеша каталога выполняется
+     * вызывающим кодом после успешного завершения транзакции.
      *
      * @param title       название товара
      * @param description описание товара
@@ -288,10 +290,6 @@ public class ItemService {
                 // он никому не виден. Неудача удаления только логируется,
                 // чтобы не замаскировать исходную ошибку.
                 .onErrorResume(error -> imageStorageService.delete(key).then(Mono.error(error)))
-                // Новый товар меняет все страницы каталога. Инвалидация — не
-                // часть транзакции БД и не должна её ронять: реализация кеша
-                // сама гасит ошибки Redis, превращая их в запись в лог.
-                .flatMap(saved -> itemCache.invalidatePages().thenReturn(saved))
                 .flatMap(saved -> cartItemRepository
                         .findByItemId(saved.getId())
                         .map(CartItem::getCount)
