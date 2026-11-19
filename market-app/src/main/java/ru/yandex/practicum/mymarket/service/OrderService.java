@@ -98,7 +98,7 @@ public class OrderService {
      * @return снимок заказа с зафиксированными ценами и суммой
      */
     public Mono<PreparedOrder> prepareOrder() {
-        return cartItemRepository.findAll().collectList().flatMap(cartItems -> {
+        return cartItemRepository.findAllSorted().collectList().flatMap(cartItems -> {
             if (cartItems.isEmpty()) {
                 return Mono.error(new EmptyCartException("Cart is empty"));
             }
