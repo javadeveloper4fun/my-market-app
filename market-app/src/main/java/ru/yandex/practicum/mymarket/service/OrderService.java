@@ -107,11 +107,10 @@ public class OrderService {
     }
 
     /**
-     * Сохраняет оплаченный заказ и очищает корзину.
+     * Сохраняет оплаченный заказ и уменьшает позиции корзины на купленное количество.
      *
-     * <p>Создание заказа, его позиций и очистка корзины должны выполниться одной
-     * транзакцией: иначе возможна покупка без заказа или товар в корзине после
-     * покупки.
+     * <p>Создание заказа, его позиций и изменение корзины должны выполниться одной
+     * транзакцией: иначе возможна покупка без заказа или рассинхронизация количества.
      *
      * <p>Заказ и позиции сохраняются отдельными вызовами, и это не стилистический
      * выбор. R2DBC не умеет писать вложенные сущности: попытка сохранить заказ
@@ -129,13 +128,14 @@ public class OrderService {
      */
     @Transactional
     public Mono<Long> placeOrder(PreparedOrder prepared) {
-        // Удаляются только позиции снимка: товар, добавленный в корзину после
-        // prepareOrder(), не должен исчезнуть без попадания в заказ.
-        List<Long> snapshotItemIds =
-                prepared.items().stream().map(OrderItem::getItemId).toList();
+        // Из корзины вычитается только оплаченное количество: товар, добавленный
+        // после подготовки заказа, должен остаться в корзине.
         return saveOrderWithItems(prepared.items())
-                .flatMap(orderId ->
-                        cartItemRepository.deleteAllByItemIdIn(snapshotItemIds).thenReturn(orderId));
+                .flatMap(orderId -> Flux.fromIterable(prepared.items())
+                        .concatMap(item -> cartItemRepository
+                                .decreaseCount(item.getItemId(), item.getCount())
+                                .then(cartItemRepository.deleteIfEmpty(item.getItemId())))
+                        .then(Mono.just(orderId)));
     }
 
     /**
