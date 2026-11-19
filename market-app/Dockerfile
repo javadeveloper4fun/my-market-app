@@ -17,8 +17,7 @@ COPY api/ api/
 COPY market-app/ market-app/
 COPY payments-service/ payments-service/
 
-RUN chmod +x ./gradlew \
-    && ./gradlew :market-app:bootJar --no-daemon -Dorg.gradle.caching=true
+RUN ./gradlew :market-app:bootJar --no-daemon -Dorg.gradle.caching=true
 
 FROM eclipse-temurin:25-jre
 

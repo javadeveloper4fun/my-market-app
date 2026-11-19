@@ -1,7 +1,7 @@
 # Multi-stage сборка сервиса платежей.
 #
 # Контекст сборки — корень репозитория: сервис использует общий Gradle-проект
-# и OpenAPI-контракт из api/. В runtime-образ устанавливается curl, чтобы
+# и OpenAPI-контракт из api/. В runtime-образ дополнительно ставится curl, чтобы
 # docker compose мог проверять готовность сервиса через HTTP healthcheck.
 
 FROM eclipse-temurin:25-jdk AS builder
@@ -16,8 +16,7 @@ COPY api/ api/
 COPY market-app/ market-app/
 COPY payments-service/ payments-service/
 
-RUN chmod +x ./gradlew \
-    && ./gradlew :payments-service:bootJar --no-daemon -Dorg.gradle.caching=true
+RUN ./gradlew :payments-service:bootJar --no-daemon -Dorg.gradle.caching=true
 
 FROM eclipse-temurin:25-jre
 
