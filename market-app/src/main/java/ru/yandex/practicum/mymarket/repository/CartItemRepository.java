@@ -1,6 +1,7 @@
 package ru.yandex.practicum.mymarket.repository;
 
 import java.util.Collection;
+import org.springframework.data.r2dbc.repository.Modifying;
 import org.springframework.data.r2dbc.repository.Query;
 import org.springframework.data.repository.reactive.ReactiveCrudRepository;
 import reactor.core.publisher.Flux;
@@ -70,4 +71,25 @@ public interface CartItemRepository extends ReactiveCrudRepository<CartItem, Lon
      * @return завершение операции
      */
     Mono<Void> deleteAllByItemIdIn(Collection<Long> itemIds);
+
+    /**
+     * Уменьшает количество товара в позиции корзины на оплаченное число.
+     *
+     * @param itemId идентификатор товара
+     * @param count  оплаченное количество
+     * @return число изменённых строк
+     */
+    @Modifying
+    @Query("UPDATE cart_item SET count = count - :count WHERE item_id = :itemId")
+    Mono<Integer> decreaseCount(long itemId, int count);
+
+    /**
+     * Удаляет позицию корзины, если её количество стало неположительным.
+     *
+     * @param itemId идентификатор товара
+     * @return число удалённых строк
+     */
+    @Modifying
+    @Query("DELETE FROM cart_item WHERE item_id = :itemId AND count <= 0")
+    Mono<Integer> deleteIfEmpty(long itemId);
 }
