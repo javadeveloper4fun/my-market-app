@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -20,6 +21,7 @@ import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.cache.CachedItem;
 import ru.yandex.practicum.mymarket.cache.CachedItemsPage;
 import ru.yandex.practicum.mymarket.cache.ItemCache;
+import ru.yandex.practicum.mymarket.cache.ItemsPageKey;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.model.Item;
 import ru.yandex.practicum.mymarket.repository.CartItemRepository;
@@ -104,6 +106,24 @@ class ItemServiceCacheTest {
                 .filteredOn(dto -> dto.id() != ItemDto.PLACEHOLDER_ID)
                 .hasSize(1);
         verify(itemCache).putPage(any(), any(CachedItemsPage.class));
+    }
+
+    @Test
+    void lowercaseSortUsesCanonicalSortingAndCacheKey() {
+        when(itemCache.getPage(any())).thenReturn(Mono.just(Optional.empty()));
+        when(itemRepository.findAllByTitle(10L, 0L)).thenReturn(Flux.just(item()));
+        when(itemRepository.count()).thenReturn(Mono.just(1L));
+        when(itemCache.putPage(any(), any())).thenReturn(Mono.empty());
+        when(cartItemRepository.findAllByItemIdIn(any())).thenReturn(Flux.empty());
+
+        var page = itemService.getItems("", "alpha", 1, 10).block();
+
+        assertThat(page.sort()).isEqualTo("ALPHA");
+        ArgumentCaptor<ItemsPageKey> keyCaptor = ArgumentCaptor.forClass(ItemsPageKey.class);
+        verify(itemCache).putPage(keyCaptor.capture(), any(CachedItemsPage.class));
+        assertThat(keyCaptor.getValue().sort()).isEqualTo("ALPHA");
+        verify(itemRepository).findAllByTitle(10L, 0L);
+        verify(itemRepository, never()).findAllUnsorted(anyLong(), anyLong());
     }
 
     @Test
