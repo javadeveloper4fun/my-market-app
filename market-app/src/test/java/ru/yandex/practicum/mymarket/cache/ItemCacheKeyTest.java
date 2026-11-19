@@ -33,7 +33,7 @@ class ItemCacheKeyTest {
         assertThat(key).contains("%3A");
         assertThat(key).doesNotContain(" ");
         assertThat(key).isEqualTo(
-                "market:items:7:%D0%BC%D1%8F%D1%87%3A%20%D0%BA%D1%80%D0%B0%D1%81%D0%BD%D1%8B%D0%B9:ALPHA:2:5");
+                "market:items:7:%D0%BC%D1%8F%D1%87%3A+%D0%BA%D1%80%D0%B0%D1%81%D0%BD%D1%8B%D0%B9:ALPHA:2:5");
     }
 
     @Test

@@ -61,6 +61,7 @@ class ItemServiceCacheTest {
         org.mockito.Mockito.lenient()
                 .when(transactionalOperator.transactional(any(Mono.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
+        org.mockito.Mockito.lenient().when(itemCache.catalogVersion()).thenReturn(Mono.just(0L));
         itemService = new ItemService(
                 itemRepository, cartItemRepository, imageStorageService, itemCache, transactionalOperator);
     }
