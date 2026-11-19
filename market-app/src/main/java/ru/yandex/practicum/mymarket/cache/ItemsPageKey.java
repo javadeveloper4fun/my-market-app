@@ -42,7 +42,8 @@ public record ItemsPageKey(long version, String search, String sort, int page, i
             searchPart = EMPTY_SEARCH;
         } else {
             String normalizedSearch = search.trim().toLowerCase(Locale.ROOT);
-            searchPart = URLEncoder.encode(normalizedSearch, StandardCharsets.UTF_8).replace("_", "%5F");
+            searchPart =
+                    URLEncoder.encode(normalizedSearch, StandardCharsets.UTF_8).replace("_", "%5F");
         }
         return PREFIX + version + ':' + searchPart + ':' + sort + ':' + page + ':' + pageSize;
     }

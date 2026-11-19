@@ -42,19 +42,17 @@ public class CheckoutService {
         return orderService
                 .prepareOrder()
                 .flatMap(prepared -> paymentsGateway.pay(prepared.total()).thenReturn(prepared))
-                .flatMap(prepared -> orderService
-                        .placeOrder(prepared)
-                        .onErrorResume(error -> {
-                            String itemIds = prepared.items().stream()
-                                    .map(item -> String.valueOf(item.getItemId()))
-                                    .collect(Collectors.joining(","));
-                            LOG.error(
-                                    "PAYMENT_SUCCEEDED_ORDER_FAILED amount={} itemIds=[{}] items={}",
-                                    prepared.total(),
-                                    itemIds,
-                                    prepared.items().size(),
-                                    error);
-                            return Mono.error(error);
-                        }));
+                .flatMap(prepared -> orderService.placeOrder(prepared).onErrorResume(error -> {
+                    String itemIds = prepared.items().stream()
+                            .map(item -> String.valueOf(item.getItemId()))
+                            .collect(Collectors.joining(","));
+                    LOG.error(
+                            "PAYMENT_SUCCEEDED_ORDER_FAILED amount={} itemIds=[{}] items={}",
+                            prepared.total(),
+                            itemIds,
+                            prepared.items().size(),
+                            error);
+                    return Mono.error(error);
+                }));
     }
 }

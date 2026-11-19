@@ -36,8 +36,7 @@ public record Paging(int pageSize, int pageNumber, boolean hasPrevious, boolean 
         // истинным навсегда. Наблюдалось это так: на странице 2147483647
         // кнопка перехода вперёд вела на страницу -2147483648.
         long shown = (long) normalizedPageNumber * normalizedPageSize;
-        return new Paging(
-                normalizedPageSize, normalizedPageNumber, normalizedPageNumber > 1, shown < totalItems);
+        return new Paging(normalizedPageSize, normalizedPageNumber, normalizedPageNumber > 1, shown < totalItems);
     }
 
     /**

@@ -109,7 +109,8 @@ public class ItemService {
                     .flatMap(cachedPage -> cachedPage
                             .map(page -> Mono.just(page))
                             .orElseGet(() -> loadItemsPage(querySearch, canonicalSort, pageLimit, offset)
-                                    .flatMap(page -> itemCache.putPage(cacheKey, page).thenReturn(page))))
+                                    .flatMap(page ->
+                                            itemCache.putPage(cacheKey, page).thenReturn(page))))
                     .flatMap(page ->
                             withCartCounts(page, searchForView, canonicalSort, normalizedPageNumber, pageLimit));
         });
