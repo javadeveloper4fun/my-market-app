@@ -50,6 +50,14 @@ public class ItemService {
      */
     private static final String IMAGE_PATH_PREFIX = "images/";
 
+    /**
+     * Сообщение об ошибке для неположительной цены.
+     *
+     * <p>Текст используется в двух точках проверки: до загрузки картинки и при
+     * сохранении уже загруженной. Константа не даёт сообщениям разойтись.
+     */
+    private static final String PRICE_MUST_BE_POSITIVE = "Цена товара должна быть больше нуля";
+
     private final ItemRepository itemRepository;
     private final CartItemRepository cartItemRepository;
     private final ImageStorageService imageStorageService;
@@ -223,7 +231,7 @@ public class ItemService {
         // в коде нет — обе создаёт Reactor, а цепочка описана объявлением
         // возвращаемого типа.
         if (price <= 0) {
-            return Mono.error(new InvalidItemFormException("Цена товара должна быть больше нуля"));
+            return Mono.error(new InvalidItemFormException(PRICE_MUST_BE_POSITIVE));
         }
         // Сначала картинка кладётся в хранилище, потом товар вставляется в базу.
         // Обратный порядок опаснее: если вставка не пройдёт, товара в базе не
@@ -244,6 +252,11 @@ public class ItemService {
      * успешного завершения транзакции, чтобы параллельное чтение не заполняло кеш
      * незакоммиченными данными.
      *
+     * <p>Ключ принадлежит вызывающему: при неположительной цене объект удаляется
+     * из хранилища, иначе в S3 осталась бы картинка, на которую никто не
+     * ссылается. При отказе базы компенсация выполняется внутри транзакционной
+     * операции.
+     *
      * @param title       название товара
      * @param description описание товара
      * @param price       цена в рублях
@@ -253,7 +266,9 @@ public class ItemService {
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public Mono<ItemDto> saveWithImage(String title, String description, long price, String key) {
         if (price <= 0) {
-            return Mono.error(new InvalidItemFormException("Цена товара должна быть больше нуля"));
+            return imageStorageService
+                    .delete(key)
+                    .then(Mono.error(new InvalidItemFormException(PRICE_MUST_BE_POSITIVE)));
         }
         return transactionalOperator
                 .transactional(saveWithImageInternal(title, description, price, key))
@@ -267,6 +282,10 @@ public class ItemService {
      * внутри {@link TransactionalOperator}. Инвалидация кеша каталога выполняется
      * вызывающим кодом после успешного завершения транзакции.
      *
+     * <p>Цена предполагается уже проверенной: {@link #createItem} отклоняет
+     * неположительную цену до загрузки картинки, а {@link #saveWithImage} — до
+     * открытия транзакции. Повторная проверка здесь была бы недостижимой.
+     *
      * @param title       название товара
      * @param description описание товара
      * @param price       цена в рублях
@@ -274,11 +293,6 @@ public class ItemService {
      * @return созданный товар; количество в корзине равно нулю
      */
     private Mono<ItemDto> saveWithImageInternal(String title, String description, long price, String key) {
-        if (price <= 0) {
-            return imageStorageService
-                    .delete(key)
-                    .then(Mono.error(new InvalidItemFormException("Цена товара должна быть больше нуля")));
-        }
         return itemRepository
                 .save(new Item(title, description, IMAGE_PATH_PREFIX + key, BigDecimal.valueOf(price)))
                 // Тема 2/11, п. «Обработка ошибок» и «Устойчивость»:

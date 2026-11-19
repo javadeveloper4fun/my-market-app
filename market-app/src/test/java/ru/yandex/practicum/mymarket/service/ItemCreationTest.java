@@ -20,6 +20,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import ru.yandex.practicum.mymarket.dto.InvalidItemFormException;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.model.Item;
 import ru.yandex.practicum.mymarket.repository.ItemRepository;
@@ -166,6 +167,38 @@ class ItemCreationTest extends DatabaseResetTest {
 
         itemService.createItem("Шапка", "Вязаная", 1200, image("hat.png")).block();
 
+        verify(imageStorageService, never()).delete(any());
+    }
+
+    /**
+     * Проверяет компенсацию на пути сохранения уже загруженной картинки:
+     * неположительная цена должна удалить объект из хранилища.
+     *
+     * <p>Ключ принадлежит вызывающему, поэтому при отказе его нужно убрать:
+     * иначе в S3 останется картинка, на которую никто не ссылается.
+     */
+    @Test
+    void saveWithImageDeletesUploadedImageWhenPriceIsNotPositive() {
+        when(imageStorageService.delete(KEY)).thenReturn(Mono.empty());
+
+        assertThatThrownBy(() -> itemService.saveWithImage("Шапка", "Вязаная", 0, KEY).block())
+                .isInstanceOf(InvalidItemFormException.class);
+
+        verify(imageStorageService).delete(KEY);
+    }
+
+    /**
+     * Проверяет, что создание товара с неположительной ценой отклоняется до
+     * загрузки картинки: компенсировать ещё нечего.
+     */
+    @Test
+    void createItemRejectsNonPositivePriceBeforeUpload() {
+        assertThatThrownBy(() -> itemService
+                        .createItem("Шапка", "Вязаная", 0, image("hat.png"))
+                        .block())
+                .isInstanceOf(InvalidItemFormException.class);
+
+        verify(imageStorageService, never()).upload(any());
         verify(imageStorageService, never()).delete(any());
     }
 
