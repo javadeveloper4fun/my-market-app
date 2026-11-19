@@ -147,6 +147,7 @@ class ItemServiceCacheTest {
 
         itemService.saveWithImage("Куртка", "Описание", 1500, "key").block();
 
+        verify(transactionalOperator).transactional(any(Mono.class));
         verify(itemCache).invalidatePages();
     }
 
