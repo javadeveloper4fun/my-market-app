@@ -65,6 +65,8 @@ services:
     image: redis:7.4.2-bookworm
     container_name: my-market-redis
     restart: unless-stopped
+    # Ключ версии каталога хранится без TTL, поэтому вытесняются только ключи с ограниченным сроком жизни.
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "volatile-lru"]
     ports:
       - "6379:6379"
     healthcheck:
