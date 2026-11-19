@@ -27,7 +27,8 @@ spring:
       host: ${SPRING_DATA_REDIS_HOST:localhost}
       port: ${SPRING_DATA_REDIS_PORT:6379}
       password: ${SPRING_DATA_REDIS_PASSWORD:}
-      timeout: 2s
+      timeout: 1s
+      connect-timeout: 1s
 
   liquibase:
     # Спринт 5, Тема 4, Урок 1 — миграции схемы БД.
