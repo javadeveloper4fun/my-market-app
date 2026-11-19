@@ -12,7 +12,6 @@ import ru.yandex.practicum.payments.model.BalanceResponse;
 import ru.yandex.practicum.payments.model.PaymentRequest;
 import ru.yandex.practicum.payments.model.PaymentResponse;
 import ru.yandex.practicum.payments.service.BalanceAccount;
-import ru.yandex.practicum.payments.service.InsufficientFundsException;
 import ru.yandex.practicum.payments.service.InvalidAmountException;
 
 /**
