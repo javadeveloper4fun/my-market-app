@@ -2,6 +2,7 @@ package ru.yandex.practicum.mymarket.cache;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 
 /**
  * Ключ страницы витрины в Redis.
@@ -40,8 +41,8 @@ public record ItemsPageKey(long version, String search, String sort, int page, i
         if (search == null || search.isBlank()) {
             searchPart = EMPTY_SEARCH;
         } else {
-            searchPart =
-                    URLEncoder.encode(search.trim(), StandardCharsets.UTF_8).replace("_", "%5F");
+            String normalizedSearch = search.trim().toLowerCase(Locale.ROOT);
+            searchPart = URLEncoder.encode(normalizedSearch, StandardCharsets.UTF_8).replace("_", "%5F");
         }
         return PREFIX + version + ':' + searchPart + ':' + sort + ':' + page + ':' + pageSize;
     }

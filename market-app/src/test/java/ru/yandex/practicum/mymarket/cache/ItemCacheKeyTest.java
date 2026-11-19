@@ -25,13 +25,15 @@ class ItemCacheKeyTest {
     }
 
     @Test
-    void searchIsTrimmedAndColonIsEncoded() {
+    void searchIsTrimmedNormalizedAndColonIsEncoded() {
         String key = new ItemsPageKey(7, " Мяч: красный ", "ALPHA", 2, 5).toRedisKey();
 
         assertThat(key).startsWith("market:items:7:");
         assertThat(key).endsWith(":ALPHA:2:5");
         assertThat(key).contains("%3A");
         assertThat(key).doesNotContain(" ");
+        assertThat(key).isEqualTo(
+                "market:items:7:%D0%BC%D1%8F%D1%87%3A%20%D0%BA%D1%80%D0%B0%D1%81%D0%BD%D1%8B%D0%B9:ALPHA:2:5");
     }
 
     @Test
@@ -47,6 +49,14 @@ class ItemCacheKeyTest {
     @Test
     void versionIsPartOfTheKey() {
         assertThat(new ItemsPageKey(3, "Куртка", "PRICE", 1, 20).toRedisKey())
-                .isEqualTo("market:items:3:%D0%9A%D1%83%D1%80%D1%82%D0%BA%D0%B0:PRICE:1:20");
+                .isEqualTo("market:items:3:%D0%BA%D1%83%D1%80%D1%82%D0%BA%D0%B0:PRICE:1:20");
+    }
+
+    @Test
+    void searchCaseDoesNotChangeCacheKey() {
+        String lower = new ItemsPageKey(1, "куртка", "NO", 1, 10).toRedisKey();
+        String upper = new ItemsPageKey(1, "КУРТКА", "NO", 1, 10).toRedisKey();
+
+        assertThat(lower).isEqualTo(upper);
     }
 }
