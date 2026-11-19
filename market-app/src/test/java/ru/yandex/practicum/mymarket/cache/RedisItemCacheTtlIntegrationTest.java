@@ -4,42 +4,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
 import java.time.Duration;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.data.redis.connection.ReactiveRedisConnection;
-import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 import ru.yandex.practicum.mymarket.model.Item;
 import ru.yandex.practicum.mymarket.repository.ItemRepository;
 import ru.yandex.practicum.mymarket.service.ItemService;
-import ru.yandex.practicum.mymarket.support.DatabaseResetTest;
+import ru.yandex.practicum.mymarket.support.AbstractRedisIntegrationTest;
 
 /**
  * Проверяет истечение срока жизни записей кеша каталога.
  *
- * <p>Тест использует короткий TTL, чтобы не ждать минуты. Контейнер Redis
- * поднимается Testcontainers и пропускается, если Docker недоступен.
+ * <p>Тест использует короткий TTL, чтобы не ждать минуты. Контейнер Redis и
+ * Spring-контекст общие с {@link RedisItemCacheIntegrationTest}: оба класса
+ * наследуют {@link AbstractRedisIntegrationTest}, поэтому Testcontainers
+ * поднимает один Redis, а Spring переиспользует один контекст.
  */
-@SpringBootTest(properties = {"market.cache.enabled=true", "market.cache.items.ttl=PT1S"})
-@ActiveProfiles("test")
-@Testcontainers(disabledWithoutDocker = true)
-class RedisItemCacheTtlIntegrationTest extends DatabaseResetTest {
-
-    @Container
-    static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7.4.2-bookworm").withExposedPorts(6379);
-
-    @DynamicPropertySource
-    static void redisProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.data.redis.host", REDIS::getHost);
-        registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
-    }
+class RedisItemCacheTtlIntegrationTest extends AbstractRedisIntegrationTest {
 
     @Autowired
     private ItemService itemService;
@@ -48,15 +28,7 @@ class RedisItemCacheTtlIntegrationTest extends DatabaseResetTest {
     private ItemRepository itemRepository;
 
     @Autowired
-    private ReactiveStringRedisTemplate redisTemplate;
-
-    @BeforeEach
-    void flushRedis() {
-        try (ReactiveRedisConnection connection =
-                redisTemplate.getConnectionFactory().getReactiveConnection()) {
-            connection.serverCommands().flushAll().block();
-        }
-    }
+    private ItemCache itemCache;
 
     @Test
     void cachedItemExpiresAfterTtl() throws Exception {
@@ -83,9 +55,10 @@ class RedisItemCacheTtlIntegrationTest extends DatabaseResetTest {
 
         itemService.getItems("", "NO", 1, 10).block();
 
-        // При чтении страницы RedisItemCache подставляет актуальную версию
-        // каталога (0, если ключ версии отсутствует).
-        String key = new ItemsPageKey(0, "", "NO", 1, 10).toRedisKey();
+        // Страница кешируется под версией каталога, прочитанной при запросе;
+        // берём её из кеша, а не литерал 0.
+        long version = itemCache.catalogVersion().block();
+        String key = new ItemsPageKey(version, "", "NO", 1, 10).toRedisKey();
         assertThat(redisTemplate.hasKey(key).block()).isTrue();
 
         waitUntilExpired(key, Duration.ofSeconds(5));

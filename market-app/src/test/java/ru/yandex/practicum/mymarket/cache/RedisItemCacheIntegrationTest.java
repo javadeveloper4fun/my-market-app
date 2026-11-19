@@ -4,46 +4,26 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
 import java.util.List;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.data.redis.connection.ReactiveRedisConnection;
-import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.ItemsPage;
 import ru.yandex.practicum.mymarket.model.Item;
 import ru.yandex.practicum.mymarket.repository.ItemRepository;
 import ru.yandex.practicum.mymarket.service.ItemService;
-import ru.yandex.practicum.mymarket.support.DatabaseResetTest;
+import ru.yandex.practicum.mymarket.support.AbstractRedisIntegrationTest;
 
 /**
  * Интеграционные тесты кеша на настоящем Redis.
  *
  * <p>Основные тесты приложения выключают кеш, чтобы не требовать Redis. Здесь
  * проверяется именно работа с ним: попадание, версия страниц и инвалидация
- * карточки. Контейнер поднимается Testcontainers, поэтому тест пропускается,
- * если Docker недоступен.
+ * карточки. Контейнер Redis и Spring-контекст общие с
+ * {@link RedisItemCacheTtlIntegrationTest}: оба класса наследуют
+ * {@link AbstractRedisIntegrationTest}, поэтому Testcontainers поднимает один
+ * Redis, а Spring переиспользует один контекст.
  */
-@SpringBootTest(properties = {"market.cache.enabled=true", "market.cache.items.ttl=PT1S"})
-@ActiveProfiles("test")
-@Testcontainers(disabledWithoutDocker = true)
-class RedisItemCacheIntegrationTest extends DatabaseResetTest {
-
-    @Container
-    static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7.4.2-bookworm").withExposedPorts(6379);
-
-    @DynamicPropertySource
-    static void redisProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.data.redis.host", REDIS::getHost);
-        registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
-    }
+class RedisItemCacheIntegrationTest extends AbstractRedisIntegrationTest {
 
     @Autowired
     private ItemService itemService;
@@ -53,17 +33,6 @@ class RedisItemCacheIntegrationTest extends DatabaseResetTest {
 
     @Autowired
     private ItemCache itemCache;
-
-    @Autowired
-    private ReactiveStringRedisTemplate redisTemplate;
-
-    @BeforeEach
-    void flushRedis() {
-        try (ReactiveRedisConnection connection =
-                redisTemplate.getConnectionFactory().getReactiveConnection()) {
-            connection.serverCommands().flushAll().block();
-        }
-    }
 
     @Test
     void pageIsServedFromCacheUntilVersionChanges() {
