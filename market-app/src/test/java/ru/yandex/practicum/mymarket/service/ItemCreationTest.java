@@ -181,7 +181,8 @@ class ItemCreationTest extends DatabaseResetTest {
     void saveWithImageDeletesUploadedImageWhenPriceIsNotPositive() {
         when(imageStorageService.delete(KEY)).thenReturn(Mono.empty());
 
-        assertThatThrownBy(() -> itemService.saveWithImage("Шапка", "Вязаная", 0, KEY).block())
+        assertThatThrownBy(() ->
+                        itemService.saveWithImage("Шапка", "Вязаная", 0, KEY).block())
                 .isInstanceOf(InvalidItemFormException.class);
 
         verify(imageStorageService).delete(KEY);
