@@ -1,11 +1,13 @@
 package ru.yandex.practicum.mymarket.config;
 
 import java.net.URI;
+import java.time.Duration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.S3Configuration;
@@ -44,6 +46,11 @@ public class ImageStorageConfig {
      */
     @Bean
     public S3AsyncClient s3AsyncClient(ImageStorageProperties properties) {
+        ClientOverrideConfiguration overrideConfig = ClientOverrideConfiguration.builder()
+                .apiCallTimeout(Duration.ofSeconds(5))
+                .apiCallAttemptTimeout(Duration.ofSeconds(3))
+                .build();
+
         return S3AsyncClient.builder()
                 .endpointOverride(URI.create(properties.getEndpoint()))
                 .region(Region.of(properties.getRegion()))
@@ -51,6 +58,7 @@ public class ImageStorageConfig {
                         AwsBasicCredentials.create(properties.getAccessKey(), properties.getSecretKey())))
                 .serviceConfiguration(
                         S3Configuration.builder().pathStyleAccessEnabled(true).build())
+                .overrideConfiguration(overrideConfig)
                 .build();
     }
 }

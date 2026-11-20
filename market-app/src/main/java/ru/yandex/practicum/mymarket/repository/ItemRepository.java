@@ -78,7 +78,7 @@ public interface ItemRepository extends ReactiveCrudRepository<Item, Long> {
      * @param offset сколько строк пропустить
      * @return поток товаров
      */
-    @Query("SELECT * FROM items ORDER BY title LIMIT :limit OFFSET :offset")
+    @Query("SELECT * FROM items ORDER BY title, id LIMIT :limit OFFSET :offset")
     Flux<Item> findAllByTitle(@Param("limit") long limit, @Param("offset") long offset);
 
     /**
@@ -88,7 +88,7 @@ public interface ItemRepository extends ReactiveCrudRepository<Item, Long> {
      * @param offset сколько строк пропустить
      * @return поток товаров
      */
-    @Query("SELECT * FROM items ORDER BY price LIMIT :limit OFFSET :offset")
+    @Query("SELECT * FROM items ORDER BY price, id LIMIT :limit OFFSET :offset")
     Flux<Item> findAllByPrice(@Param("limit") long limit, @Param("offset") long offset);
 
     /**
@@ -103,6 +103,7 @@ public interface ItemRepository extends ReactiveCrudRepository<Item, Long> {
             SELECT * FROM items
             WHERE lower(title) LIKE lower(concat('%', :text, '%')) ESCAPE '\\'
                OR lower(description) LIKE lower(concat('%', :text, '%')) ESCAPE '\\'
+            ORDER BY id
             LIMIT :limit OFFSET :offset
             """)
     Flux<Item> searchUnsorted(@Param("text") String text, @Param("limit") long limit, @Param("offset") long offset);
@@ -119,7 +120,7 @@ public interface ItemRepository extends ReactiveCrudRepository<Item, Long> {
             SELECT * FROM items
             WHERE lower(title) LIKE lower(concat('%', :text, '%')) ESCAPE '\\'
                OR lower(description) LIKE lower(concat('%', :text, '%')) ESCAPE '\\'
-            ORDER BY title
+            ORDER BY title, id
             LIMIT :limit OFFSET :offset
             """)
     Flux<Item> searchByTitle(@Param("text") String text, @Param("limit") long limit, @Param("offset") long offset);
@@ -136,7 +137,7 @@ public interface ItemRepository extends ReactiveCrudRepository<Item, Long> {
             SELECT * FROM items
             WHERE lower(title) LIKE lower(concat('%', :text, '%')) ESCAPE '\\'
                OR lower(description) LIKE lower(concat('%', :text, '%')) ESCAPE '\\'
-            ORDER BY price
+            ORDER BY price, id
             LIMIT :limit OFFSET :offset
             """)
     Flux<Item> searchByPrice(@Param("text") String text, @Param("limit") long limit, @Param("offset") long offset);

@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
@@ -27,18 +27,8 @@ import ru.yandex.practicum.mymarket.repository.ItemRepository;
  * корзины сохраняется тем, что итоговый список собирается перебором позиций, а
  * не товаров: иначе выдача шла бы в порядке таблицы {@code items} и корзина
  * «переставлялась» сама.
- *
- * <p>Тема 4/11 «Реактивный доступ к данным в Spring Data R2DBC», раздел
- * «Декларативное управление транзакциями через {@code @Transactional}»:
- * аннотация работает за счёт бина {@code R2dbcTransactionManager}, а не
- * {@code DataSourceTransactionManager}, поэтому на реактивном стеке менеджер
- * другой. Транзакция открывается при подписке на возвращённый {@code Mono} и
- * закрывается по его завершении — то есть позже, чем вызов метода. Как и в
- * блокирующей версии, действует только на публичные методы: прокси
- * не переопределяет private-методы.
  */
 @Service
-@Transactional(readOnly = true)
 public class CartService {
 
     private final CartItemRepository cartItemRepository;
@@ -115,20 +105,10 @@ public class CartService {
     /**
      * Применяет действие (увеличить/уменьшить/удалить) к позиции товара в корзине.
      *
-     * <p>Тема 6/11 «Репозитории в Spring Data R2DBC», урок 2/2: в
-     * {@code ReactiveCrudRepository} все методы возвращают {@code Mono} или
-     * {@code Flux} всегда, даже те, что в блокирующем {@code CrudRepository} не
-     * возвращали ничего. Отсюда особенность этого метода: действие возвращает
-     * {@code Mono<Void>}, который завершается пустым значением, так же устроен
-     * {@code then()}. Из-за этого {@code switchIfEmpty} после {@code flatMap}
-     * сработал бы и у найденной позиции — он увидел бы пустой результат, решил,
-     * что товара в корзине нет, и попытался вставить вторую строку, упёршись в
-     * уникальный индекс по {@code item_id}. Поэтому отсутствие позиции
-     * передаётся дальше отдельным значением, а не пустым результатом.
-     *
-     * <p>Если товара в корзине нет, позиция создаётся только при {@code PLUS} с
-     * количеством 1; для остальных действий пустой результат — корректный ответ,
-     * а не ошибка: уменьшать или удалять нечего.
+     * <p>Изменения выполняются атомарными SQL-операциями, чтобы параллельные
+     * запросы не теряли обновления количества. Для добавления новой позиции при
+     * гонке используется уникальность {@code item_id}: при конфликте вставки
+     * количество увеличивается повторно.
      *
      * @param itemId идентификатор товара
      * @param action действие над позицией
@@ -136,64 +116,33 @@ public class CartService {
      */
     @Transactional
     public Mono<Void> applyAction(long itemId, Action action) {
-        return cartItemRepository
-                .findByItemId(itemId)
-                .map(Optional::of)
-                .defaultIfEmpty(Optional.empty())
-                .flatMap(found -> found.map(cartItem -> applyToExisting(cartItem, action))
-                        .orElseGet(() -> createWhenAbsent(itemId, action)))
-                .then();
-    }
-
-    /**
-     * Применяет действие к уже существующей позиции.
-     *
-     * @param cartItem позиция корзины
-     * @param action   действие над позицией
-     * @return завершение операции
-     */
-    private Mono<Void> applyToExisting(CartItem cartItem, Action action) {
         return switch (action) {
-            case PLUS -> saveWithCount(cartItem, cartItem.getCount() + 1);
-            case MINUS ->
-                cartItem.getCount() <= 1
-                        ? cartItemRepository.delete(cartItem)
-                        : saveWithCount(cartItem, cartItem.getCount() - 1);
-            case DELETE -> cartItemRepository.delete(cartItem);
+            case PLUS -> increase(itemId);
+            case MINUS -> decrease(itemId);
+            case DELETE -> cartItemRepository.deleteByItemId(itemId).then();
         };
     }
 
-    /**
-     * Создаёт позицию с количеством 1, если действие — {@code PLUS}.
-     *
-     * <p>Товар ищется отдельно: позиция ссылается на {@code item_id}, и в R2DBC
-     * вложенная ссылка при записи заставила бы сохранить ещё и сам товар.
-     *
-     * @param itemId идентификатор товара
-     * @param action действие над позицией
-     * @return завершение операции
-     */
-    private Mono<Void> createWhenAbsent(long itemId, Action action) {
-        if (action != Action.PLUS) {
-            return Mono.empty();
-        }
-        return itemRepository
-                .findById(itemId)
-                .switchIfEmpty(Mono.error(() -> new ItemNotFoundException(itemId)))
-                .flatMap(item -> cartItemRepository.save(new CartItem(item.getId(), 1)))
-                .then();
+    private Mono<Void> increase(long itemId) {
+        return cartItemRepository.increaseCount(itemId).flatMap(updated -> {
+            if (updated > 0) {
+                return Mono.empty();
+            }
+            return itemRepository
+                    .findById(itemId)
+                    .switchIfEmpty(Mono.error(() -> new ItemNotFoundException(itemId)))
+                    .then(cartItemRepository.save(new CartItem(itemId, 1)).then())
+                    .onErrorResume(
+                            DuplicateKeyException.class,
+                            e -> cartItemRepository.increaseCount(itemId).then());
+        });
     }
 
-    /**
-     * Сохраняет позицию с заданным количеством.
-     *
-     * @param cartItem позиция корзины
-     * @param count    новое количество
-     * @return завершение операции
-     */
-    private Mono<Void> saveWithCount(CartItem cartItem, int count) {
-        cartItem.setCount(count);
-        return cartItemRepository.save(cartItem).then();
+    private Mono<Void> decrease(long itemId) {
+        return cartItemRepository
+                .decreaseCount(itemId, 1)
+                .then(cartItemRepository.deleteIfEmpty(itemId))
+                .then();
     }
 
     /**

@@ -61,6 +61,16 @@ public interface CartItemRepository extends ReactiveCrudRepository<CartItem, Lon
     Flux<CartItem> findAllSorted();
 
     /**
+     * Увеличивает количество товара в позиции корзины на единицу.
+     *
+     * @param itemId идентификатор товара
+     * @return число изменённых строк
+     */
+    @Modifying
+    @Query("UPDATE cart_item SET count = count + 1 WHERE item_id = :itemId")
+    Mono<Integer> increaseCount(long itemId);
+
+    /**
      * Уменьшает количество товара в позиции корзины на оплаченное число.
      *
      * @param itemId идентификатор товара
@@ -80,4 +90,14 @@ public interface CartItemRepository extends ReactiveCrudRepository<CartItem, Lon
     @Modifying
     @Query("DELETE FROM cart_item WHERE item_id = :itemId AND count <= 0")
     Mono<Integer> deleteIfEmpty(long itemId);
+
+    /**
+     * Удаляет позицию корзины по товару.
+     *
+     * @param itemId идентификатор товара
+     * @return число удалённых строк
+     */
+    @Modifying
+    @Query("DELETE FROM cart_item WHERE item_id = :itemId")
+    Mono<Integer> deleteByItemId(long itemId);
 }

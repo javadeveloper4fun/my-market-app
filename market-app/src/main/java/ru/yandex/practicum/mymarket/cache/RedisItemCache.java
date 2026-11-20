@@ -7,6 +7,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -121,7 +122,7 @@ public class RedisItemCache implements ItemCache {
      * @return JSON-строка
      */
     private Mono<String> serialize(Object value) {
-        return Mono.fromCallable(() -> objectMapper.writeValueAsString(value));
+        return Mono.fromCallable(() -> objectMapper.writeValueAsString(value)).subscribeOn(Schedulers.boundedElastic());
     }
 
     /**
@@ -133,7 +134,7 @@ public class RedisItemCache implements ItemCache {
      * @return значение
      */
     private <T> Mono<T> deserialize(String json, Class<T> clazz) {
-        return Mono.fromCallable(() -> objectMapper.readValue(json, clazz));
+        return Mono.fromCallable(() -> objectMapper.readValue(json, clazz)).subscribeOn(Schedulers.boundedElastic());
     }
 
     /**

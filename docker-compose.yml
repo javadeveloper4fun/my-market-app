@@ -95,7 +95,7 @@ services:
       retries: 10
 
   market-s3mock:
-    image: adobe/s3mock:latest
+    image: adobe/s3mock:5.2.3
     container_name: my-market-app-s3mock
     restart: unless-stopped
     user: "0:0"

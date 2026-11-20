@@ -46,11 +46,16 @@ public class CheckoutService {
                     String itemIds = prepared.items().stream()
                             .map(item -> String.valueOf(item.getItemId()))
                             .collect(Collectors.joining(","));
+                    String snapshot = prepared.items().stream()
+                            .map(item -> item.getItemId() + ":" + item.getTitle() + ":" + item.getPrice() + "x"
+                                    + item.getCount())
+                            .collect(Collectors.joining(","));
                     LOG.error(
-                            "PAYMENT_SUCCEEDED_ORDER_FAILED amount={} itemIds=[{}] items={}",
+                            "PAYMENT_SUCCEEDED_ORDER_FAILED amount={} itemsCount={} itemIds=[{}] snapshot=[{}]",
                             prepared.total(),
-                            itemIds,
                             prepared.items().size(),
+                            itemIds,
+                            snapshot,
                             error);
                     return Mono.error(error);
                 }));

@@ -101,6 +101,7 @@ public class ImagesController {
                 .read(objectKey)
                 .map(content -> ResponseEntity.ok()
                         .contentType(imageStorageService.contentTypeOf(objectKey))
+                        .header("X-Content-Type-Options", "nosniff")
                         .cacheControl(CacheControl.maxAge(java.time.Duration.ofDays(30)))
                         .body(content))
                 .onErrorResume(ImageNotFoundException.class, error -> {
