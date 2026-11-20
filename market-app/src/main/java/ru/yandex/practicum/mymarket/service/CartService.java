@@ -1,0 +1,163 @@
+package ru.yandex.practicum.mymarket.service;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import ru.yandex.practicum.mymarket.cache.CachedItem;
+import ru.yandex.practicum.mymarket.cache.ItemCache;
+import ru.yandex.practicum.mymarket.dto.CartPage;
+import ru.yandex.practicum.mymarket.dto.ItemDto;
+import ru.yandex.practicum.mymarket.model.CartItem;
+import ru.yandex.practicum.mymarket.model.Item;
+import ru.yandex.practicum.mymarket.repository.CartItemRepository;
+import ru.yandex.practicum.mymarket.repository.ItemRepository;
+
+/**
+ * Корзина покупателя.
+ *
+ * <p>Позиции и товары хранятся в разных таблицах, и в блокирующей версии они
+ * читались одним {@code join fetch}. На реактивном стеке это два запроса: сначала
+ * позиции, затем товары по найденным идентификаторам. Порядок позиций
+ * корзины сохраняется тем, что итоговый список собирается перебором позиций, а
+ * не товаров: иначе выдача шла бы в порядке таблицы {@code items} и корзина
+ * «переставлялась» сама.
+ */
+@Service
+public class CartService {
+
+    private final CartItemRepository cartItemRepository;
+    private final ItemRepository itemRepository;
+    private final ItemCache itemCache;
+
+    public CartService(CartItemRepository cartItemRepository, ItemRepository itemRepository, ItemCache itemCache) {
+        this.cartItemRepository = cartItemRepository;
+        this.itemRepository = itemRepository;
+        this.itemCache = itemCache;
+    }
+
+    /**
+     * Возвращает корзину покупателя.
+     *
+     * <p>Итоговая сумма считается по усечённым длинным ценам, как и на витрине:
+     * {@link ItemDto} уже хранит целые рубли, поэтому дополнительного округления
+     * не происходит.
+     *
+     * @return корзина со списком позиций и суммой
+     */
+    public Mono<CartPage> getCart() {
+        return cartItemRepository.findAllSorted().collectList().flatMap(cartItems -> {
+            if (cartItems.isEmpty()) {
+                return Mono.just(new CartPage(List.of(), 0L));
+            }
+            List<Long> itemIds = cartItems.stream().map(CartItem::getItemId).toList();
+            return itemsByIds(itemIds).map(items -> toPage(cartItems, items));
+        });
+    }
+
+    /**
+     * Читает метаданные товаров корзины из кеша, а недостающие докручивает из базы.
+     *
+     * <p>Тема 6/7 «Использование Spring Data Redis в качестве кеша», урок 1/7:
+     * cache-aside — приложение само читает кеш и при промахе идёт в источник.
+     * Количество в корзине здесь не участвует: оно меняется чаще каталога и
+     * всегда читается из {@code cart_item}, поэтому в кеше лежит только карточка
+     * товара без {@code count}.
+     *
+     * <p>Порядок операций важен: сначала читаем кеш по всем идентификаторам,
+     * затем одним запросом дочитываем недостающие товары и кладём их в кеш.
+     * Запрос по одному отсутствующему товару дал бы N+1 вместо одного пакетного.
+     *
+     * @param itemIds идентификаторы товаров в корзине
+     * @return метаданные товаров по идентификаторам
+     */
+    private Mono<Map<Long, CachedItem>> itemsByIds(List<Long> itemIds) {
+        Map<Long, CachedItem> cached = new HashMap<>();
+        List<Long> missing = new ArrayList<>();
+        return Flux.fromIterable(itemIds)
+                .concatMap(id -> itemCache
+                        .getItem(id)
+                        .doOnNext(item -> item.ifPresentOrElse(value -> cached.put(id, value), () -> missing.add(id))))
+                .then(Mono.defer(() -> {
+                    if (missing.isEmpty()) {
+                        return Mono.just(cached);
+                    }
+                    return itemRepository.findAllById(missing).collectList().flatMap(items -> {
+                        List<CachedItem> toCache = new ArrayList<>(items.size());
+                        for (Item item : items) {
+                            CachedItem value = CachedItem.fromEntity(item);
+                            cached.put(item.getId(), value);
+                            toCache.add(value);
+                        }
+                        return Flux.fromIterable(toCache)
+                                .concatMap(itemCache::putItem)
+                                .then(Mono.just(cached));
+                    });
+                }))
+                .map(Map::copyOf);
+    }
+
+    /**
+     * Применяет действие (увеличить/уменьшить/удалить) к позиции товара в корзине.
+     *
+     * <p>Изменения выполняются атомарными SQL-операциями, чтобы параллельные
+     * запросы не теряли обновления количества. Для добавления новой позиции при
+     * гонке используется уникальность {@code item_id}: при конфликте вставки
+     * количество увеличивается повторно.
+     *
+     * @param itemId идентификатор товара
+     * @param action действие над позицией
+     * @return завершение операции
+     */
+    @Transactional
+    public Mono<Void> applyAction(long itemId, Action action) {
+        return switch (action) {
+            case PLUS -> increase(itemId);
+            case MINUS -> decrease(itemId);
+            case DELETE -> cartItemRepository.deleteByItemId(itemId).then();
+        };
+    }
+
+    private Mono<Void> increase(long itemId) {
+        return cartItemRepository.increaseCount(itemId).flatMap(updated -> {
+            if (updated > 0) {
+                return Mono.empty();
+            }
+            return itemRepository
+                    .findById(itemId)
+                    .switchIfEmpty(Mono.error(() -> new ItemNotFoundException(itemId)))
+                    .then(cartItemRepository.save(new CartItem(itemId, 1)).then())
+                    .onErrorResume(
+                            DuplicateKeyException.class,
+                            e -> cartItemRepository.increaseCount(itemId).then());
+        });
+    }
+
+    private Mono<Void> decrease(long itemId) {
+        return cartItemRepository
+                .decreaseCount(itemId, 1)
+                .then(cartItemRepository.deleteIfEmpty(itemId))
+                .then();
+    }
+
+    /**
+     * Собирает страницу корзины, сохраняя порядок позиций.
+     *
+     * @param cartItems позиции корзины в порядке выдачи
+     * @param items     товары по идентификаторам позиций
+     * @return корзина со списком позиций и суммой
+     */
+    private CartPage toPage(List<CartItem> cartItems, Map<Long, CachedItem> items) {
+        List<ItemDto> dtos = cartItems.stream()
+                .filter(cartItem -> items.containsKey(cartItem.getItemId()))
+                .map(cartItem -> items.get(cartItem.getItemId()).toDto(cartItem.getCount()))
+                .toList();
+        long total = dtos.stream().mapToLong(dto -> dto.price() * dto.count()).sum();
+        return new CartPage(dtos, total);
+    }
+}
