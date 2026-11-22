@@ -121,8 +121,8 @@ public class ItemService {
                             .orElseGet(() -> loadItemsPage(querySearch, canonicalSort, pageLimit, offset)
                                     .flatMap(page ->
                                             itemCache.putPage(cacheKey, page).thenReturn(page))))
-                    .flatMap(page ->
-                            withCartCounts(page, userId, searchForView, canonicalSort, normalizedPageNumber, pageLimit));
+                    .flatMap(page -> withCartCounts(
+                            page, userId, searchForView, canonicalSort, normalizedPageNumber, pageLimit));
         });
     }
 
@@ -318,15 +318,12 @@ public class ItemService {
     }
 
     /**
-     * Дописывает к товарам страницы количество в корзине и собирает страницу.
+     * Добавляет количества из корзины к кэшированной странице.
      *
-     * <p>Позиции читаются по идентификаторам товаров страницы, а не по всей
-     * корзине: условие {@code IN} без ограничения обошло бы весь каталог, а
-     * шаблону нужны числа ровно у показанных товаров.
-     *
-     * @param page       товары страницы без количества в корзине
-     * @param search     строка поиска для модели
-     * @param sort       вид сортировки для модели
+     * @param page       кэшированная страница
+     * @param userId     идентификатор пользователя; null для анонимного
+     * @param search     исходная поисковая строка
+     * @param sort       тип сортировки для ответа
      * @param pageNumber номер страницы, начиная с 1
      * @param pageLimit  товаров на странице
      * @return страница витрины
@@ -338,9 +335,8 @@ public class ItemService {
         }
         if (userId == null) {
             // Аноним не имеет корзины: все количества равны нулю.
-            List<ItemDto> dtos = page.items().stream()
-                    .map(item -> item.toDto(0))
-                    .toList();
+            List<ItemDto> dtos =
+                    page.items().stream().map(item -> item.toDto(0)).toList();
             return Mono.just(ItemsPage.of(dtos, search, sort, Paging.of(pageLimit, pageNumber, page.total())));
         }
         List<Long> itemIds = page.items().stream().map(CachedItem::id).toList();

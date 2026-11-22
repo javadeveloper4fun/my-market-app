@@ -65,18 +65,12 @@ public class OrderService {
      * @return список заказов с позициями
      */
     public Mono<List<OrderDto>> getOrders(Long userId) {
-        return orderRepository
-                .findAllIdsByUserId(userId)
-                .collectList()
-                .flatMap(ids -> {
-                    if (ids.isEmpty()) {
-                        return Mono.just(List.of());
-                    }
-                    return orderItemRepository
-                            .findAllByOrderIdIn(ids)
-                            .collectList()
-                            .map(items -> toOrderDtos(ids, items));
-                });
+        return orderRepository.findAllIdsByUserId(userId).collectList().flatMap(ids -> {
+            if (ids.isEmpty()) {
+                return Mono.just(List.of());
+            }
+            return orderItemRepository.findAllByOrderIdIn(ids).collectList().map(items -> toOrderDtos(ids, items));
+        });
     }
 
     /**
@@ -107,15 +101,12 @@ public class OrderService {
      * @return снимок заказа с зафиксированными ценами и суммой
      */
     public Mono<PreparedOrder> prepareOrder(Long userId) {
-        return cartItemRepository
-                .findAllSortedByUserId(userId)
-                .collectList()
-                .flatMap(cartItems -> {
-                    if (cartItems.isEmpty()) {
-                        return Mono.error(new EmptyCartException("Cart is empty"));
-                    }
-                    return snapshot(cartItems).map(PreparedOrder::of);
-                });
+        return cartItemRepository.findAllSortedByUserId(userId).collectList().flatMap(cartItems -> {
+            if (cartItems.isEmpty()) {
+                return Mono.error(new EmptyCartException("Cart is empty"));
+            }
+            return snapshot(cartItems).map(PreparedOrder::of);
+        });
     }
 
     /**

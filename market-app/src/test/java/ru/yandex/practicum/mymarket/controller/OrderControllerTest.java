@@ -2,7 +2,6 @@ package ru.yandex.practicum.mymarket.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.csrf;
 import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.mockUser;
@@ -10,16 +9,16 @@ import static org.springframework.security.test.web.reactive.server.SecurityMock
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.webflux.test.autoconfigure.WebFluxTest;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.web.server.SecurityWebFilterChain;
-import org.thymeleaf.extras.springsecurity6.dialect.SpringSecurityDialect;
-import org.springframework.boot.webflux.test.autoconfigure.WebFluxTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.reactive.server.WebTestClient;
+import org.thymeleaf.extras.springsecurity6.dialect.SpringSecurityDialect;
 import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.OrderDto;
@@ -230,7 +229,7 @@ class OrderControllerTest {
         authed().get().uri("/orders/999").exchange().expectStatus().isNotFound();
     }
 
-@TestConfiguration
+    @TestConfiguration
     @EnableWebFluxSecurity
     static class TestSecurityConfig {
         @Bean
@@ -241,10 +240,11 @@ class OrderControllerTest {
         @Bean
         SecurityWebFilterChain testChain() {
             ServerHttpSecurity http = ServerHttpSecurity.http();
-            return http
-                .csrf(csrf -> csrf.csrfTokenRepository(org.springframework.security.web.server.csrf.CookieServerCsrfTokenRepository.withHttpOnlyFalse()))
-                .authorizeExchange(ex -> ex.anyExchange().permitAll())
-                .build();
+            return http.csrf(
+                            csrf -> csrf.csrfTokenRepository(org.springframework.security.web.server.csrf
+                                    .CookieServerCsrfTokenRepository.withHttpOnlyFalse()))
+                    .authorizeExchange(ex -> ex.anyExchange().permitAll())
+                    .build();
         }
     }
 }

@@ -10,10 +10,10 @@ import ru.yandex.practicum.mymarket.model.UserRole;
 public interface UserRoleRepository extends ReactiveCrudRepository<UserRole, Long> {
 
     /**
-     * Возвращает все роли пользователя.
+     * Возвращает роли пользователя.
      *
      * @param userId идентификатор пользователя
-     * @ поток ролей пользователя
+     * @return роли пользователя
      */
     Flux<UserRole> findByUserId(Long userId);
 }

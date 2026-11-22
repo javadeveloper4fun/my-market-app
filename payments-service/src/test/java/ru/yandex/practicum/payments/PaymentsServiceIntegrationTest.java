@@ -35,37 +35,69 @@ class PaymentsServiceIntegrationTest {
     @Test
     void returnsBalance() {
         client.mutateWith(mockJwt())
-                .get().uri("/api/v1/balance").header("X-User-Id", "1")
-                .exchange().expectStatus().isOk()
-                .expectHeader().contentTypeCompatibleWith(MediaType.APPLICATION_JSON)
-                .expectBody().jsonPath("$.balance").isEqualTo(10_000);
+                .get()
+                .uri("/api/v1/balance")
+                .header("X-User-Id", "1")
+                .exchange()
+                .expectStatus()
+                .isOk()
+                .expectHeader()
+                .contentTypeCompatibleWith(MediaType.APPLICATION_JSON)
+                .expectBody()
+                .jsonPath("$.balance")
+                .isEqualTo(10_000);
     }
 
     @Test
     void paysAndUpdatesBalance() {
         client.mutateWith(mockJwt())
-                .post().uri("/api/v1/payments").header("X-User-Id", "1")
-                .contentType(MediaType.APPLICATION_JSON).bodyValue("{\"amount\":1500}")
-                .exchange().expectStatus().isOk()
-                .expectBody().jsonPath("$.amount").isEqualTo(1500).jsonPath("$.balance").isEqualTo(8500);
+                .post()
+                .uri("/api/v1/payments")
+                .header("X-User-Id", "1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("{\"amount\":1500}")
+                .exchange()
+                .expectStatus()
+                .isOk()
+                .expectBody()
+                .jsonPath("$.amount")
+                .isEqualTo(1500)
+                .jsonPath("$.balance")
+                .isEqualTo(8500);
 
         client.mutateWith(mockJwt())
-                .get().uri("/api/v1/balance").header("X-User-Id", "1")
-                .exchange().expectBody().jsonPath("$.balance").isEqualTo(8500);
+                .get()
+                .uri("/api/v1/balance")
+                .header("X-User-Id", "1")
+                .exchange()
+                .expectBody()
+                .jsonPath("$.balance")
+                .isEqualTo(8500);
     }
 
     @Test
     void rejectsPaymentWhenFundsInsufficient() {
         client.mutateWith(mockJwt())
-                .post().uri("/api/v1/payments").header("X-User-Id", "1")
-                .contentType(MediaType.APPLICATION_JSON).bodyValue("{\"amount\":15000}")
-                .exchange().expectStatus().isEqualTo(402)
-                .expectBody().jsonPath("$.code").isEqualTo("INSUFFICIENT_FUNDS");
+                .post()
+                .uri("/api/v1/payments")
+                .header("X-User-Id", "1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("{\"amount\":15000}")
+                .exchange()
+                .expectStatus()
+                .isEqualTo(402)
+                .expectBody()
+                .jsonPath("$.code")
+                .isEqualTo("INSUFFICIENT_FUNDS");
     }
 
     @Test
     void unauthorizedWithoutJwt() {
-        client.get().uri("/api/v1/balance").header("X-User-Id", "1")
-                .exchange().expectStatus().isUnauthorized();
+        client.get()
+                .uri("/api/v1/balance")
+                .header("X-User-Id", "1")
+                .exchange()
+                .expectStatus()
+                .isUnauthorized();
     }
 }

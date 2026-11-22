@@ -181,11 +181,14 @@ class ItemRepositoryPostgreSqlTest extends DatabaseResetTest {
         cartItemRepository.save(new CartItem(jacket.getId(), 5, USER_ID)).block();
         cartItemRepository.save(new CartItem(hat.getId(), 4, USER_ID)).block();
 
-        assertThat(cartItemRepository.decreaseCount(jacket.getId(), 2, USER_ID).block()).isEqualTo(1);
+        assertThat(cartItemRepository.decreaseCount(jacket.getId(), 2, USER_ID).block())
+                .isEqualTo(1);
 
-        CartItem jacketPosition =
-                cartItemRepository.findByItemIdAndUserId(jacket.getId(), USER_ID).block();
-        CartItem hatPosition = cartItemRepository.findByItemIdAndUserId(hat.getId(), USER_ID).block();
+        CartItem jacketPosition = cartItemRepository
+                .findByItemIdAndUserId(jacket.getId(), USER_ID)
+                .block();
+        CartItem hatPosition =
+                cartItemRepository.findByItemIdAndUserId(hat.getId(), USER_ID).block();
         assertThat(jacketPosition).isNotNull();
         assertThat(jacketPosition.getCount()).isEqualTo(3);
         assertThat(hatPosition).isNotNull();
@@ -209,11 +212,17 @@ class ItemRepositoryPostgreSqlTest extends DatabaseResetTest {
         cartItemRepository.decreaseCount(jacket.getId(), 2, USER_ID).block();
         cartItemRepository.decreaseCount(hat.getId(), 1, USER_ID).block();
 
-        assertThat(cartItemRepository.deleteIfEmpty(jacket.getId(), USER_ID).block()).isEqualTo(1);
-        assertThat(cartItemRepository.deleteIfEmpty(hat.getId(), USER_ID).block()).isZero();
+        assertThat(cartItemRepository.deleteIfEmpty(jacket.getId(), USER_ID).block())
+                .isEqualTo(1);
+        assertThat(cartItemRepository.deleteIfEmpty(hat.getId(), USER_ID).block())
+                .isZero();
 
-        assertThat(cartItemRepository.findByItemIdAndUserId(jacket.getId(), USER_ID).block()).isNull();
-        CartItem hatPosition = cartItemRepository.findByItemIdAndUserId(hat.getId(), USER_ID).block();
+        assertThat(cartItemRepository
+                        .findByItemIdAndUserId(jacket.getId(), USER_ID)
+                        .block())
+                .isNull();
+        CartItem hatPosition =
+                cartItemRepository.findByItemIdAndUserId(hat.getId(), USER_ID).block();
         assertThat(hatPosition).isNotNull();
         assertThat(hatPosition.getCount()).isEqualTo(2);
     }
@@ -228,7 +237,8 @@ class ItemRepositoryPostgreSqlTest extends DatabaseResetTest {
     void decreaseCountReturnsZeroWhenPositionIsAbsent() {
         Item jacket = save(new Item("Куртка", "Тёплая куртка", "images/jacket.jpg", new BigDecimal("4500.00")));
 
-        assertThat(cartItemRepository.decreaseCount(jacket.getId(), 1, USER_ID).block()).isZero();
+        assertThat(cartItemRepository.decreaseCount(jacket.getId(), 1, USER_ID).block())
+                .isZero();
     }
 
     /**

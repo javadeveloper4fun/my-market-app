@@ -39,7 +39,9 @@ class WebFluxFlowIntegrationTest extends DatabaseResetTest {
     @org.junit.jupiter.api.BeforeEach
     void setUpClient() {
         client = WebTestClient.bindToApplicationContext(context)
-                .apply(org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.springSecurity())
+                .apply(
+                        org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers
+                                .springSecurity())
                 .configureClient()
                 .build();
     }
@@ -73,8 +75,12 @@ class WebFluxFlowIntegrationTest extends DatabaseResetTest {
         payments.setUnavailable(false);
         testUser = userRepository.findByUsername("user1").block();
         if (testUser == null) {
-            databaseClient.sql("INSERT INTO users (username, password_hash, enabled, created_at) VALUES ('user1','{noop}password',true,CURRENT_TIMESTAMP)")
-                    .fetch().rowsUpdated().block();
+            databaseClient
+                    .sql("INSERT INTO users (username, password_hash, enabled, created_at) "
+                            + "VALUES ('user1','{noop}password',true,CURRENT_TIMESTAMP)")
+                    .fetch()
+                    .rowsUpdated()
+                    .block();
             testUser = userRepository.findByUsername("user1").block();
         }
     }
@@ -95,20 +101,32 @@ class WebFluxFlowIntegrationTest extends DatabaseResetTest {
         authed().post()
                 .uri("/items?id=" + item.getId() + "&action=PLUS&search=&sort=NO&pageNumber=1&pageSize=5")
                 .exchange()
-                .expectStatus().is3xxRedirection()
-                .expectHeader().location("/items?search=&sort=NO&pageNumber=1&pageSize=5");
+                .expectStatus()
+                .is3xxRedirection()
+                .expectHeader()
+                .location("/items?search=&sort=NO&pageNumber=1&pageSize=5");
 
-        authed().get().uri("/cart/items")
-                .exchange().expectStatus().isOk()
+        authed().get()
+                .uri("/cart/items")
+                .exchange()
+                .expectStatus()
+                .isOk()
                 .expectBody(String.class)
                 .value(html -> assertThat(html).contains("Куртка").contains("4500"));
 
-        authed().post().uri("/buy")
-                .exchange().expectStatus().is3xxRedirection()
-                .expectHeader().value("Location", l -> assertThat(l).contains("/orders/").endsWith("?newOrder=true"));
+        authed().post()
+                .uri("/buy")
+                .exchange()
+                .expectStatus()
+                .is3xxRedirection()
+                .expectHeader()
+                .value("Location", l -> assertThat(l).contains("/orders/").endsWith("?newOrder=true"));
 
-        authed().get().uri("/orders")
-                .exchange().expectStatus().isOk()
+        authed().get()
+                .uri("/orders")
+                .exchange()
+                .expectStatus()
+                .isOk()
                 .expectBody(String.class)
                 .value(html -> assertThat(html).contains("Заказ"));
     }
@@ -117,11 +135,18 @@ class WebFluxFlowIntegrationTest extends DatabaseResetTest {
     void cartIsEmptyAfterBuying() {
         Item item = saveItem("Шапка", "Тёплая", "5200");
 
-        authed().post().uri("/cart/items?id=" + item.getId() + "&action=PLUS").exchange().expectStatus().isOk();
+        authed().post()
+                .uri("/cart/items?id=" + item.getId() + "&action=PLUS")
+                .exchange()
+                .expectStatus()
+                .isOk();
         authed().post().uri("/buy").exchange().expectStatus().is3xxRedirection();
 
-        authed().get().uri("/cart/items")
-                .exchange().expectStatus().isOk()
+        authed().get()
+                .uri("/cart/items")
+                .exchange()
+                .expectStatus()
+                .isOk()
                 .expectBody(String.class)
                 .value(html -> assertThat(html).doesNotContain("5200"));
 
@@ -134,9 +159,15 @@ class WebFluxFlowIntegrationTest extends DatabaseResetTest {
         cartItemRepository.save(new CartItem(item.getId(), 1, testUser.getId())).block();
         payments.setBalance(0);
 
-        authed().post().uri("/buy")
-                .exchange().expectStatus().is3xxRedirection()
-                .expectHeader().value("Location", l -> assertThat(l).contains("/cart/items").contains("paymentError=insufficient-funds"));
+        authed().post()
+                .uri("/buy")
+                .exchange()
+                .expectStatus()
+                .is3xxRedirection()
+                .expectHeader()
+                .value(
+                        "Location",
+                        l -> assertThat(l).contains("/cart/items").contains("paymentError=insufficient-funds"));
 
         assertThat(orderRepository.count().block()).isZero();
         assertThat(cartItemRepository.count().block()).isEqualTo(1);
@@ -148,9 +179,15 @@ class WebFluxFlowIntegrationTest extends DatabaseResetTest {
         cartItemRepository.save(new CartItem(item.getId(), 1, testUser.getId())).block();
         payments.setUnavailable(true);
 
-        authed().post().uri("/buy")
-                .exchange().expectStatus().is3xxRedirection()
-                .expectHeader().value("Location", l -> assertThat(l).contains("/cart/items").contains("paymentError=payments-unavailable"));
+        authed().post()
+                .uri("/buy")
+                .exchange()
+                .expectStatus()
+                .is3xxRedirection()
+                .expectHeader()
+                .value(
+                        "Location",
+                        l -> assertThat(l).contains("/cart/items").contains("paymentError=payments-unavailable"));
 
         assertThat(orderRepository.count().block()).isZero();
         assertThat(cartItemRepository.count().block()).isEqualTo(1);
@@ -162,10 +199,14 @@ class WebFluxFlowIntegrationTest extends DatabaseResetTest {
         cartItemRepository.save(new CartItem(item.getId(), 1, testUser.getId())).block();
         payments.setUnavailable(true);
 
-        authed().get().uri("/cart/items")
-                .exchange().expectStatus().isOk()
+        authed().get()
+                .uri("/cart/items")
+                .exchange()
+                .expectStatus()
+                .isOk()
                 .expectBody(String.class)
-                .value(html -> assertThat(html).contains("Сервис платежей недоступен").doesNotContain("Баланс:"));
+                .value(html ->
+                        assertThat(html).contains("Сервис платежей недоступен").doesNotContain("Баланс:"));
     }
 
     @Test
@@ -175,10 +216,16 @@ class WebFluxFlowIntegrationTest extends DatabaseResetTest {
 
     @Test
     void notFoundShowsErrorPageWithWayBack() {
-        client.get().uri("/items/999999").accept(MediaType.TEXT_HTML)
-                .exchange().expectStatus().isNotFound()
-                .expectHeader().contentTypeCompatibleWith(MediaType.TEXT_HTML)
-                .expectBody(String.class).value(html -> assertThat(html).contains("href=\"/items\""));
+        client.get()
+                .uri("/items/999999")
+                .accept(MediaType.TEXT_HTML)
+                .exchange()
+                .expectStatus()
+                .isNotFound()
+                .expectHeader()
+                .contentTypeCompatibleWith(MediaType.TEXT_HTML)
+                .expectBody(String.class)
+                .value(html -> assertThat(html).contains("href=\"/items\""));
     }
 
     @Test
@@ -196,6 +243,8 @@ class WebFluxFlowIntegrationTest extends DatabaseResetTest {
     }
 
     private Item saveItem(String title, String description, String price) {
-        return itemRepository.save(new Item(title, description, "images/jacket.jpg", new BigDecimal(price))).block();
+        return itemRepository
+                .save(new Item(title, description, "images/jacket.jpg", new BigDecimal(price)))
+                .block();
     }
 }

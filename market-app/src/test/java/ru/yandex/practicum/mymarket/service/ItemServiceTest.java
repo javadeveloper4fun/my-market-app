@@ -34,7 +34,11 @@ class ItemServiceTest extends DatabaseResetTest {
 
     @org.junit.jupiter.api.BeforeEach
     void seedUser() {
-        databaseClient.sql("MERGE INTO users (id, username, password_hash, enabled, created_at) KEY(id) VALUES (1, 'test', '{noop}p', true, CURRENT_TIMESTAMP)").then().block();
+        databaseClient
+                .sql("MERGE INTO users (id, username, password_hash, enabled, created_at) "
+                        + "KEY(id) VALUES (1, 'test', '{noop}p', true, CURRENT_TIMESTAMP)")
+                .then()
+                .block();
     }
 
     @Autowired

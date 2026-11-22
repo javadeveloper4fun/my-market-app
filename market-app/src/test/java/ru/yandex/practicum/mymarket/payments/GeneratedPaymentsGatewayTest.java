@@ -86,11 +86,15 @@ class GeneratedPaymentsGatewayTest {
     }
 
     private GeneratedPaymentsGateway gateway(Duration timeout) {
-        return new GeneratedPaymentsGateway(WebClient.builder().build(),
+        return new GeneratedPaymentsGateway(
+                WebClient.builder().build(),
                 new PaymentsProperties(server.url("/").toString(), timeout));
     }
 
     private MockResponse json(int status, String body) {
-        return new MockResponse().setResponseCode(status).setHeader("Content-Type", "application/json").setBody(body);
+        return new MockResponse()
+                .setResponseCode(status)
+                .setHeader("Content-Type", "application/json")
+                .setBody(body);
     }
 }

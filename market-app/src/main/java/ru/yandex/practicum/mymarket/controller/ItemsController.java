@@ -14,11 +14,11 @@ import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.dto.InvalidItemFormException;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.NewItemForm;
+import ru.yandex.practicum.mymarket.security.CurrentUserProvider;
 import ru.yandex.practicum.mymarket.service.Action;
 import ru.yandex.practicum.mymarket.service.CartService;
 import ru.yandex.practicum.mymarket.service.ImageUploadException;
 import ru.yandex.practicum.mymarket.service.ItemService;
-import ru.yandex.practicum.mymarket.security.CurrentUserProvider;
 
 /**
  * Контроллер витрины товаров.
@@ -30,8 +30,7 @@ public class ItemsController {
     private final CartService cartService;
     private final CurrentUserProvider currentUserProvider;
 
-    public ItemsController(ItemService itemService, CartService cartService,
-                           CurrentUserProvider currentUserProvider) {
+    public ItemsController(ItemService itemService, CartService cartService, CurrentUserProvider currentUserProvider) {
         this.itemService = itemService;
         this.cartService = cartService;
         this.currentUserProvider = currentUserProvider;
@@ -56,8 +55,7 @@ public class ItemsController {
                             model.addAttribute("sort", page.sort());
                             model.addAttribute("paging", page.paging());
                             model.addAttribute("placeholderId", ItemDto.PLACEHOLDER_ID);
-                        })
-                )
+                        }))
                 .thenReturn("items");
     }
 
@@ -105,10 +103,8 @@ public class ItemsController {
                 .getCurrentUser()
                 .map(user -> java.util.Optional.of(user.getId()))
                 .defaultIfEmpty(java.util.Optional.empty())
-                .flatMap(userId -> itemService
-                        .getItem(id, userId.orElse(null))
-                        .doOnNext(item -> model.addAttribute("item", item))
-                )
+                .flatMap(userId ->
+                        itemService.getItem(id, userId.orElse(null)).doOnNext(item -> model.addAttribute("item", item)))
                 .thenReturn("item");
     }
 
@@ -116,7 +112,8 @@ public class ItemsController {
     public Mono<String> changeItemCountOnItemPage(@PathVariable long id, @RequestParam Action action, Model model) {
         return currentUserProvider
                 .getCurrentUser()
-                .flatMap(user -> cartService.applyAction(id, action, user.getId())
+                .flatMap(user -> cartService
+                        .applyAction(id, action, user.getId())
                         .then(itemService.getItem(id, user.getId()))
                         .doOnNext(item -> model.addAttribute("item", item)))
                 .thenReturn("item");

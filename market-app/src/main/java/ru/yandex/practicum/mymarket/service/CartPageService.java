@@ -9,6 +9,7 @@ import ru.yandex.practicum.mymarket.security.CurrentUserProvider;
 @Service
 public class CartPageService {
 
+    /** Сообщение о недоступности платежей. */
     public static final String PAYMENTS_UNAVAILABLE_MESSAGE =
             "Сервис платежей недоступен. Оформление заказа временно невозможно.";
 
@@ -16,19 +17,23 @@ public class CartPageService {
     private final PaymentsGateway paymentsGateway;
     private final CurrentUserProvider currentUserProvider;
 
-    public CartPageService(CartService cartService, PaymentsGateway paymentsGateway,
-                           CurrentUserProvider currentUserProvider) {
+    public CartPageService(
+            CartService cartService, PaymentsGateway paymentsGateway, CurrentUserProvider currentUserProvider) {
         this.cartService = cartService;
         this.paymentsGateway = paymentsGateway;
         this.currentUserProvider = currentUserProvider;
     }
 
     public Mono<CartView> getCartView() {
-        return currentUserProvider.getCurrentUser()
+        return currentUserProvider
+                .getCurrentUser()
                 .switchIfEmpty(Mono.error(new EmptyCartException("User is not authenticated")))
-                .flatMap(user -> cartService.getCart(user.getId())
-                        .flatMap(cart -> paymentsGateway.getBalance(user.getId())
+                .flatMap(user -> cartService
+                        .getCart(user.getId())
+                        .flatMap(cart -> paymentsGateway
+                                .getBalance(user.getId())
                                 .map(balance -> new CartView(cart, balance, null))
-                                .onErrorResume(error -> Mono.just(new CartView(cart, null, PAYMENTS_UNAVAILABLE_MESSAGE)))));
+                                .onErrorResume(
+                                        error -> Mono.just(new CartView(cart, null, PAYMENTS_UNAVAILABLE_MESSAGE)))));
     }
 }
