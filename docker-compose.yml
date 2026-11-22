@@ -35,8 +35,8 @@ services:
       # Спринт 8 — OAuth2 Client Credentials для вызовов payments-service.
       MARKET_OAUTH2_CLIENT_ID: market-app
       MARKET_OAUTH2_CLIENT_SECRET: market-secret
-            MARKET_OAUTH2_TOKEN_URI: http://keycloak:8080/realms/market/protocol/openid-connect/token
-          ports:
+      MARKET_OAUTH2_TOKEN_URI: http://keycloak:8080/realms/market/protocol/openid-connect/token
+    ports:
       - "8080:8080"
     depends_on:
       market-postgres:
