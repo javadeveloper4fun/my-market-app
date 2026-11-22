@@ -46,10 +46,10 @@ public class ItemsController {
             Model model) {
         return currentUserProvider
                 .getCurrentUser()
-                .map(user -> user.getId())
-                .defaultIfEmpty(null)
+                .map(user -> java.util.Optional.of(user.getId()))
+                .defaultIfEmpty(java.util.Optional.empty())
                 .flatMap(userId -> itemService
-                        .getItems(search, sort, pageNumber, pageSize, userId)
+                        .getItems(search, sort, pageNumber, pageSize, userId.orElse(null))
                         .doOnNext(page -> {
                             model.addAttribute("items", page.rows());
                             model.addAttribute("search", page.search());
@@ -103,10 +103,10 @@ public class ItemsController {
     public Mono<String> getItem(@PathVariable long id, Model model) {
         return currentUserProvider
                 .getCurrentUser()
-                .map(user -> user.getId())
-                .defaultIfEmpty(null)
+                .map(user -> java.util.Optional.of(user.getId()))
+                .defaultIfEmpty(java.util.Optional.empty())
                 .flatMap(userId -> itemService
-                        .getItem(id, userId)
+                        .getItem(id, userId.orElse(null))
                         .doOnNext(item -> model.addAttribute("item", item))
                 )
                 .thenReturn("item");

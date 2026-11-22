@@ -13,6 +13,8 @@ import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.dto.CartPage;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.payments.PaymentsGateway;
+import ru.yandex.practicum.mymarket.security.CurrentUserProvider;
+import ru.yandex.practicum.mymarket.model.User;
 import ru.yandex.practicum.mymarket.payments.PaymentsUnavailableException;
 
 /**
@@ -31,13 +33,24 @@ class CartPageServiceTest {
     @Mock
     private PaymentsGateway paymentsGateway;
 
+    @Mock
+    private CurrentUserProvider currentUserProvider;
+
     @InjectMocks
     private CartPageService cartPageService;
 
+    @org.junit.jupiter.api.BeforeEach
+    void setUpUser() {
+        User user = new User();
+        user.setId(1L);
+        user.setUsername("u");
+        when(currentUserProvider.getCurrentUser()).thenReturn(Mono.just(user));
+    }
+
     @Test
     void allowsBuyWhenBalanceCoversTotal() {
-        when(cartService.getCart()).thenReturn(Mono.just(cart(4500L)));
-        when(paymentsGateway.getBalance()).thenReturn(Mono.just(10_000L));
+        when(cartService.getCart(1L)).thenReturn(Mono.just(cart(4500L)));
+        when(paymentsGateway.getBalance(1L)).thenReturn(Mono.just(10_000L));
 
         var view = cartPageService.getCartView().block();
 
@@ -49,8 +62,8 @@ class CartPageServiceTest {
 
     @Test
     void blocksBuyWhenBalanceIsLessThanTotal() {
-        when(cartService.getCart()).thenReturn(Mono.just(cart(4500L)));
-        when(paymentsGateway.getBalance()).thenReturn(Mono.just(1000L));
+        when(cartService.getCart(1L)).thenReturn(Mono.just(cart(4500L)));
+        when(paymentsGateway.getBalance(1L)).thenReturn(Mono.just(1000L));
 
         var view = cartPageService.getCartView().block();
 
@@ -61,8 +74,8 @@ class CartPageServiceTest {
 
     @Test
     void blocksBuyWhenPaymentsAreUnavailable() {
-        when(cartService.getCart()).thenReturn(Mono.just(cart(4500L)));
-        when(paymentsGateway.getBalance())
+        when(cartService.getCart(1L)).thenReturn(Mono.just(cart(4500L)));
+        when(paymentsGateway.getBalance(1L))
                 .thenReturn(Mono.error(new PaymentsUnavailableException("connection refused")));
 
         var view = cartPageService.getCartView().block();
@@ -74,8 +87,8 @@ class CartPageServiceTest {
 
     @Test
     void blocksBuyWhenCartIsEmpty() {
-        when(cartService.getCart()).thenReturn(Mono.just(new CartPage(List.of(), 0L)));
-        when(paymentsGateway.getBalance()).thenReturn(Mono.just(10_000L));
+        when(cartService.getCart(1L)).thenReturn(Mono.just(new CartPage(List.of(), 0L)));
+        when(paymentsGateway.getBalance(1L)).thenReturn(Mono.just(10_000L));
 
         var view = cartPageService.getCartView().block();
 

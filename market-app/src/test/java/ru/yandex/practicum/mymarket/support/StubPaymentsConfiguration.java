@@ -1,5 +1,7 @@
 package ru.yandex.practicum.mymarket.support;
 
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -10,81 +12,63 @@ import ru.yandex.practicum.mymarket.payments.PaymentResult;
 import ru.yandex.practicum.mymarket.payments.PaymentsGateway;
 import ru.yandex.practicum.mymarket.payments.PaymentsUnavailableException;
 
-/**
- * Заглушка платежного шлюза для интеграционных тестов.
- *
- * <p>Полный контекст не должен ходить в настоящий сервис платежей: тест обязан
- * работать без второго процесса. Бин помечен {@link Primary}, поэтому заменяет
- * сгенерированный шлюз, но не требует выключать его компонент.
- */
 @TestConfiguration(proxyBeanMethods = false)
 public class StubPaymentsConfiguration {
 
-    /**
-     * Создаёт шлюз с большим начальным балансом.
-     *
-     * @return заглушка платежей
-     */
     @Bean
     @Primary
     public PaymentsGateway stubPaymentsGateway() {
         return new StubPaymentsGateway(1_000_000L);
     }
 
-    /**
-     * Потокобезопасная заглушка с тем же контрактом, что и настоящий шлюз.
-     *
-     * <p>Баланс и признак недоступности меняются из теста: сценарии «недостаточно
-     * средств» и «сервис недоступен» иначе потребовали бы второго контекста.
-     */
     public static final class StubPaymentsGateway implements PaymentsGateway {
-
-        private final AtomicLong balance;
+        private final ConcurrentMap<Long, AtomicLong> balances = new ConcurrentHashMap<>();
+        private final long initialBalance;
         private volatile boolean unavailable;
 
         StubPaymentsGateway(long initialBalance) {
-            this.balance = new AtomicLong(initialBalance);
+            this.initialBalance = initialBalance;
         }
 
-        /**
-         * Задаёт баланс заглушки.
-         *
-         * @param value новый баланс
-         */
         public void setBalance(long value) {
-            balance.set(value);
+            balances.clear();
+            balances.put(0L, new AtomicLong(value));
+            this.initialBalanceForAll = value;
         }
 
-        /**
-         * Включает или выключает режим недоступности сервиса.
-         *
-         * @param value {@code true} — заглушка отвечает ошибкой
-         */
+        private volatile long initialBalanceForAll = 1_000_000L;
+
         public void setUnavailable(boolean value) {
             unavailable = value;
         }
 
         @Override
-        public Mono<Long> getBalance() {
+        public Mono<Long> getBalance(long userId) {
             if (unavailable) {
                 return Mono.error(new PaymentsUnavailableException("stub unavailable"));
             }
-            return Mono.fromSupplier(balance::get);
+            return Mono.fromSupplier(() -> balanceFor(userId).get());
         }
 
         @Override
-        public Mono<PaymentResult> pay(long amount) {
+        public Mono<PaymentResult> pay(long userId, long amount) {
             if (unavailable) {
                 return Mono.error(new PaymentsUnavailableException("stub unavailable"));
             }
             return Mono.fromCallable(() -> {
+                AtomicLong balance = balanceFor(userId);
                 long current = balance.get();
                 if (current < amount) {
                     throw new InsufficientFundsException();
                 }
-                balance.set(current - amount);
-                return new PaymentResult(amount, current - amount);
+                long remaining = current - amount;
+                balance.set(remaining);
+                return new PaymentResult(amount, remaining);
             });
+        }
+
+        private AtomicLong balanceFor(long userId) {
+            return balances.computeIfAbsent(userId, ignored -> new AtomicLong(initialBalanceForAll));
         }
     }
 }
