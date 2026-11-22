@@ -1,9 +1,10 @@
 package ru.yandex.practicum.mymarket.service;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,7 +15,6 @@ import ru.yandex.practicum.mymarket.cache.ItemCache;
 import ru.yandex.practicum.mymarket.dto.CartPage;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.model.CartItem;
-import ru.yandex.practicum.mymarket.model.Item;
 import ru.yandex.practicum.mymarket.repository.CartItemRepository;
 import ru.yandex.practicum.mymarket.repository.ItemRepository;
 
@@ -77,29 +77,36 @@ public class CartService {
      * @return метаданные товаров по идентификаторам
      */
     private Mono<Map<Long, CachedItem>> itemsByIds(List<Long> itemIds) {
-        Map<Long, CachedItem> cached = new HashMap<>();
-        List<Long> missing = new ArrayList<>();
+        if (itemIds.isEmpty()) {
+            return Mono.just(Map.of());
+        }
         return Flux.fromIterable(itemIds)
-                .concatMap(id -> itemCache
-                        .getItem(id)
-                        .doOnNext(item -> item.ifPresentOrElse(value -> cached.put(id, value), () -> missing.add(id))))
-                .then(Mono.defer(() -> {
+                .concatMap(id ->
+                        itemCache.getItem(id).defaultIfEmpty(Optional.empty()).map(hit -> Map.entry(id, hit)))
+                .collectList()
+                .flatMap(entries -> {
+                    Map<Long, CachedItem> hits = entries.stream()
+                            .filter(entry -> entry.getValue().isPresent())
+                            .collect(Collectors.toMap(
+                                    Map.Entry::getKey, entry -> entry.getValue().get(), (a, b) -> a));
+                    List<Long> missing = entries.stream()
+                            .filter(entry -> entry.getValue().isEmpty())
+                            .map(Map.Entry::getKey)
+                            .distinct()
+                            .toList();
                     if (missing.isEmpty()) {
-                        return Mono.just(cached);
+                        return Mono.just(Map.copyOf(hits));
                     }
                     return itemRepository.findAllById(missing).collectList().flatMap(items -> {
-                        List<CachedItem> toCache = new ArrayList<>(items.size());
-                        for (Item item : items) {
-                            CachedItem value = CachedItem.fromEntity(item);
-                            cached.put(item.getId(), value);
-                            toCache.add(value);
-                        }
-                        return Flux.fromIterable(toCache)
+                        Map<Long, CachedItem> merged = new HashMap<>(hits);
+                        List<CachedItem> loaded =
+                                items.stream().map(CachedItem::fromEntity).toList();
+                        loaded.forEach(item -> merged.put(item.id(), item));
+                        return Flux.fromIterable(loaded)
                                 .concatMap(itemCache::putItem)
-                                .then(Mono.just(cached));
+                                .then(Mono.just(Map.copyOf(merged)));
                     });
-                }))
-                .map(Map::copyOf);
+                });
     }
 
     /**
