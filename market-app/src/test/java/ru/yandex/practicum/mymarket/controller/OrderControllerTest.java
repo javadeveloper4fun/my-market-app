@@ -2,11 +2,21 @@ package ru.yandex.practicum.mymarket.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.csrf;
+import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.mockUser;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Import;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
+import org.springframework.security.config.web.server.ServerHttpSecurity;
+import org.springframework.security.web.server.SecurityWebFilterChain;
+import org.thymeleaf.extras.springsecurity6.dialect.SpringSecurityDialect;
 import org.springframework.boot.webflux.test.autoconfigure.WebFluxTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -33,6 +43,7 @@ import ru.yandex.practicum.mymarket.service.OrderService;
  * подпишется на {@code null} и упадёт уже в тесте.
  */
 @WebFluxTest(OrderController.class)
+@Import(OrderControllerTest.TestSecurityConfig.class)
 class OrderControllerTest {
 
     @Autowired
@@ -44,15 +55,30 @@ class OrderControllerTest {
     @MockitoBean
     private CheckoutService checkoutService;
 
+    @MockitoBean
+    private ru.yandex.practicum.mymarket.security.CurrentUserProvider currentUserProvider;
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUpCurrentUser() {
+        ru.yandex.practicum.mymarket.model.User user = new ru.yandex.practicum.mymarket.model.User();
+        user.setId(1L);
+        user.setUsername("user1");
+        when(currentUserProvider.getCurrentUser()).thenReturn(Mono.just(user));
+    }
+
+    private WebTestClient authed() {
+        return client.mutateWith(mockUser("user1").roles("USER")).mutateWith(csrf());
+    }
+
     /**
      * Проверяет, что GET /orders отдаёт страницу списка заказов.
      */
     @Test
     void getOrdersRendersOrdersView() {
         OrderDto order = new OrderDto(1L, List.of(), 7000L);
-        when(orderService.getOrders()).thenReturn(Mono.just(List.of(order)));
+        when(orderService.getOrders(eq(1L))).thenReturn(Mono.just(List.of(order)));
 
-        client.get()
+        authed().get()
                 .uri("/orders")
                 .exchange()
                 .expectStatus()
@@ -68,9 +94,9 @@ class OrderControllerTest {
     void getOrderRendersOrderViewWithNewOrderFlag() {
         ItemDto item = new ItemDto(1L, "Куртка", "", "", 1500L, 2);
         OrderDto order = new OrderDto(1L, List.of(item), 3000L);
-        when(orderService.getOrder(eq(1L))).thenReturn(Mono.just(order));
+        when(orderService.getOrder(eq(1L), eq(1L))).thenReturn(Mono.just(order));
 
-        client.get()
+        authed().get()
                 .uri("/orders/1?newOrder=true")
                 .exchange()
                 .expectStatus()
@@ -86,9 +112,9 @@ class OrderControllerTest {
     @Test
     void getOrderDefaultsNewOrderToFalse() {
         OrderDto order = new OrderDto(1L, List.of(), 0L);
-        when(orderService.getOrder(eq(1L))).thenReturn(Mono.just(order));
+        when(orderService.getOrder(eq(1L), eq(1L))).thenReturn(Mono.just(order));
 
-        client.get()
+        authed().get()
                 .uri("/orders/1")
                 .exchange()
                 .expectStatus()
@@ -104,7 +130,7 @@ class OrderControllerTest {
     void buyRedirectsToNewOrder() {
         when(checkoutService.checkout()).thenReturn(Mono.just(42L));
 
-        client.post()
+        authed().post()
                 .uri("/buy")
                 .exchange()
                 .expectStatus()
@@ -120,7 +146,7 @@ class OrderControllerTest {
     void buyRedirectsToCartWhenCartIsEmpty() {
         when(checkoutService.checkout()).thenReturn(Mono.error(new EmptyCartException("Cart is empty")));
 
-        client.post()
+        authed().post()
                 .uri("/buy")
                 .exchange()
                 .expectStatus()
@@ -142,7 +168,7 @@ class OrderControllerTest {
     void buyDoesNotRedirectOnUnexpectedIllegalState() {
         when(checkoutService.checkout()).thenReturn(Mono.error(new IllegalStateException("connection lost")));
 
-        client.post().uri("/buy").exchange().expectStatus().is5xxServerError();
+        authed().post().uri("/buy").exchange().expectStatus().is5xxServerError();
     }
 
     /**
@@ -152,7 +178,7 @@ class OrderControllerTest {
     void buyRedirectsToCartWhenFundsAreInsufficient() {
         when(checkoutService.checkout()).thenReturn(Mono.error(new InsufficientFundsException()));
 
-        client.post()
+        authed().post()
                 .uri("/buy")
                 .exchange()
                 .expectStatus()
@@ -169,7 +195,7 @@ class OrderControllerTest {
         when(checkoutService.checkout())
                 .thenReturn(Mono.error(new InvalidPaymentRequestException("bad amount", new IllegalStateException())));
 
-        client.post()
+        authed().post()
                 .uri("/buy")
                 .exchange()
                 .expectStatus()
@@ -185,7 +211,7 @@ class OrderControllerTest {
     void buyRedirectsToCartWhenPaymentsAreUnavailable() {
         when(checkoutService.checkout()).thenReturn(Mono.error(new PaymentsUnavailableException("connection refused")));
 
-        client.post()
+        authed().post()
                 .uri("/buy")
                 .exchange()
                 .expectStatus()
@@ -199,8 +225,26 @@ class OrderControllerTest {
      */
     @Test
     void getOrderReturns404WhenNotFound() {
-        when(orderService.getOrder(eq(999L))).thenReturn(Mono.error(new OrderNotFoundException(999L)));
+        when(orderService.getOrder(eq(999L), eq(1L))).thenReturn(Mono.error(new OrderNotFoundException(999L)));
 
-        client.get().uri("/orders/999").exchange().expectStatus().isNotFound();
+        authed().get().uri("/orders/999").exchange().expectStatus().isNotFound();
+    }
+
+@TestConfiguration
+    @EnableWebFluxSecurity
+    static class TestSecurityConfig {
+        @Bean
+        SpringSecurityDialect springSecurityDialect() {
+            return new SpringSecurityDialect();
+        }
+
+        @Bean
+        SecurityWebFilterChain testChain() {
+            ServerHttpSecurity http = ServerHttpSecurity.http();
+            return http
+                .csrf(csrf -> csrf.csrfTokenRepository(org.springframework.security.web.server.csrf.CookieServerCsrfTokenRepository.withHttpOnlyFalse()))
+                .authorizeExchange(ex -> ex.anyExchange().permitAll())
+                .build();
+        }
     }
 }

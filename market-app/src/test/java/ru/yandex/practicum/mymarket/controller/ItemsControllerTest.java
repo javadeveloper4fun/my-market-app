@@ -3,12 +3,23 @@ package ru.yandex.practicum.mymarket.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.csrf;
+import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.mockUser;
 
 import java.net.URI;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Import;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
+import org.springframework.security.config.web.server.ServerHttpSecurity;
+import org.springframework.security.web.server.SecurityWebFilterChain;
+import org.thymeleaf.extras.springsecurity6.dialect.SpringSecurityDialect;
 import org.springframework.boot.webflux.test.autoconfigure.WebFluxTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -34,6 +45,7 @@ import ru.yandex.practicum.mymarket.service.ItemService;
  * {@code formaction}.
  */
 @WebFluxTest(ItemsController.class)
+@Import(ItemsControllerTest.TestSecurityConfig.class)
 class ItemsControllerTest {
 
     @Autowired
@@ -45,15 +57,30 @@ class ItemsControllerTest {
     @MockitoBean
     private CartService cartService;
 
+    @MockitoBean
+    private ru.yandex.practicum.mymarket.security.CurrentUserProvider currentUserProvider;
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUpCurrentUser() {
+        ru.yandex.practicum.mymarket.model.User user = new ru.yandex.practicum.mymarket.model.User();
+        user.setId(1L);
+        user.setUsername("user1");
+        when(currentUserProvider.getCurrentUser()).thenReturn(Mono.just(user));
+    }
+
+    private WebTestClient authed() {
+        return client.mutateWith(mockUser("user1").roles("USER")).mutateWith(csrf());
+    }
+
     /**
      * Проверяет, что GET / отдаёт витрину с атрибутами модели из сервиса.
      */
     @Test
     void getItemsRendersItemsView() {
         ItemsPage page = new ItemsPage(List.of(), "", "NO", new Paging(5, 1, false, false));
-        when(itemService.getItems(eq(""), eq("NO"), eq(1), eq(5))).thenReturn(Mono.just(page));
+        when(itemService.getItems(eq(""), eq("NO"), eq(1), eq(5), any())).thenReturn(Mono.just(page));
 
-        client.get()
+        authed().get()
                 .uri("/")
                 .exchange()
                 .expectStatus()
@@ -73,9 +100,9 @@ class ItemsControllerTest {
     void getItemsPassesRequestParamsToService() {
         ItemDto dto = new ItemDto(1L, "Куртка", "Описание", "images/jacket.jpg", 4500L, 0);
         ItemsPage page = ItemsPage.of(List.of(dto), "куртка", "ALPHA", new Paging(5, 1, false, false));
-        when(itemService.getItems(eq("куртка"), eq("ALPHA"), eq(1), eq(5))).thenReturn(Mono.just(page));
+        when(itemService.getItems(eq("куртка"), eq("ALPHA"), eq(1), eq(5), any())).thenReturn(Mono.just(page));
 
-        client.get()
+        authed().get()
                 .uri(URI.create(
                         "/items?search=%D0%BA%D1%83%D1%80%D1%82%D0%BA%D0%B0&sort=ALPHA&pageNumber=1&pageSize=5"))
                 .exchange()
@@ -91,9 +118,9 @@ class ItemsControllerTest {
      */
     @Test
     void postItemsRedirectsWithPreservedParams() {
-        when(cartService.applyAction(eq(1L), eq(Action.PLUS))).thenReturn(Mono.empty());
+        when(cartService.applyAction(eq(1L), eq(Action.PLUS), eq(1L))).thenReturn(Mono.empty());
 
-        client.post()
+        authed().post()
                 .uri(URI.create("/items?id=1&action=PLUS&search=%D0%BA%D1%83%D1%80%D1%82%D0%BA%D0%B0"
                         + "&sort=ALPHA&pageNumber=2&pageSize=10"))
                 .exchange()
@@ -102,7 +129,7 @@ class ItemsControllerTest {
                 .expectHeader()
                 .location("/items?search=%D0%BA%D1%83%D1%80%D1%82%D0%BA%D0%B0&sort=ALPHA&pageNumber=2&pageSize=10");
 
-        verify(cartService).applyAction(eq(1L), eq(Action.PLUS));
+        verify(cartService).applyAction(eq(1L), eq(Action.PLUS), eq(1L));
     }
 
     /**
@@ -115,9 +142,9 @@ class ItemsControllerTest {
     @Test
     void getItemRendersItemView() {
         ItemDto dto = new ItemDto(1L, "Куртка", "Описание", "images/jacket.jpg", 4500L, 0);
-        when(itemService.getItem(eq(1L))).thenReturn(Mono.just(dto));
+        when(itemService.getItem(eq(1L), any())).thenReturn(Mono.just(dto));
 
-        client.get()
+        authed().get()
                 .uri("/items/1")
                 .exchange()
                 .expectStatus()
@@ -132,12 +159,12 @@ class ItemsControllerTest {
     @Test
     void postItemRendersItemView() {
         ItemDto dto = new ItemDto(1L, "Куртка", "Описание", "images/jacket.jpg", 4500L, 1);
-        when(cartService.applyAction(eq(1L), eq(Action.MINUS))).thenReturn(Mono.empty());
-        when(itemService.getItem(eq(1L))).thenReturn(Mono.just(dto));
+        when(cartService.applyAction(eq(1L), eq(Action.MINUS), eq(1L))).thenReturn(Mono.empty());
+        when(itemService.getItem(eq(1L), any())).thenReturn(Mono.just(dto));
 
-        client.post().uri("/items/1?action=MINUS").exchange().expectStatus().isOk();
+        authed().post().uri("/items/1?action=MINUS").exchange().expectStatus().isOk();
 
-        verify(cartService).applyAction(eq(1L), eq(Action.MINUS));
+        verify(cartService).applyAction(eq(1L), eq(Action.MINUS), eq(1L));
     }
 
     /**
@@ -145,7 +172,7 @@ class ItemsControllerTest {
      */
     @Test
     void postItemRejectsInvalidAction() {
-        client.post().uri("/items/1?action=UNKNOWN").exchange().expectStatus().isBadRequest();
+        authed().post().uri("/items/1?action=UNKNOWN").exchange().expectStatus().isBadRequest();
     }
 
     /**
@@ -153,9 +180,9 @@ class ItemsControllerTest {
      */
     @Test
     void getItemReturns404WhenNotFound() {
-        when(itemService.getItem(eq(999L))).thenReturn(Mono.error(new ItemNotFoundException(999L)));
+        when(itemService.getItem(eq(999L), any())).thenReturn(Mono.error(new ItemNotFoundException(999L)));
 
-        client.get().uri("/items/999").exchange().expectStatus().isNotFound();
+        authed().get().uri("/items/999").exchange().expectStatus().isNotFound();
     }
 
     /**
@@ -164,7 +191,7 @@ class ItemsControllerTest {
      */
     @Test
     void itemsWithInvalidActionReturns400() {
-        client.post().uri("/items?action=UNKNOWN").exchange().expectStatus().isBadRequest();
+        authed().post().uri("/items?action=UNKNOWN").exchange().expectStatus().isBadRequest();
     }
 
     /**
@@ -172,6 +199,24 @@ class ItemsControllerTest {
      */
     @Test
     void itemWithInvalidIdTypeReturns400() {
-        client.get().uri("/items/abc").exchange().expectStatus().isBadRequest();
+        authed().get().uri("/items/abc").exchange().expectStatus().isBadRequest();
+    }
+
+@TestConfiguration
+    @EnableWebFluxSecurity
+    static class TestSecurityConfig {
+        @Bean
+        SpringSecurityDialect springSecurityDialect() {
+            return new SpringSecurityDialect();
+        }
+
+        @Bean
+        SecurityWebFilterChain testChain() {
+            ServerHttpSecurity http = ServerHttpSecurity.http();
+            return http
+                .csrf(csrf -> csrf.csrfTokenRepository(org.springframework.security.web.server.csrf.CookieServerCsrfTokenRepository.withHttpOnlyFalse()))
+                .authorizeExchange(ex -> ex.anyExchange().permitAll())
+                .build();
+        }
     }
 }

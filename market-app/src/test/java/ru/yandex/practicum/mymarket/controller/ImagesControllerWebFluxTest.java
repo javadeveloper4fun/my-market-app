@@ -8,6 +8,13 @@ import java.nio.ByteBuffer;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webflux.test.autoconfigure.WebFluxTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
+import org.springframework.security.config.web.server.ServerHttpSecurity;
+import org.springframework.security.web.server.SecurityWebFilterChain;
+import org.thymeleaf.extras.springsecurity6.dialect.SpringSecurityDialect;
 import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DefaultDataBufferFactory;
@@ -38,6 +45,7 @@ import ru.yandex.practicum.mymarket.service.ImageUploadException;
  * от правильности контроллера.
  */
 @WebFluxTest(controllers = ImagesController.class)
+@Import(ImagesControllerWebFluxTest.TestSecurityConfig.class)
 @AutoConfigureWebTestClient
 @ActiveProfiles("test")
 class ImagesControllerWebFluxTest {
@@ -153,5 +161,17 @@ class ImagesControllerWebFluxTest {
     private Flux<DataBuffer> onePixelImage() {
         ByteBuffer content = ByteBuffer.wrap(new byte[] {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xD9});
         return Flux.just(DefaultDataBufferFactory.sharedInstance.wrap(content));
+    }
+
+    @TestConfiguration
+    @EnableWebFluxSecurity
+    static class TestSecurityConfig {
+        @Bean
+        SpringSecurityDialect springSecurityDialect() { return new SpringSecurityDialect(); }
+
+        @Bean
+        SecurityWebFilterChain testChain(ServerHttpSecurity http) {
+            return http.csrf(csrf -> csrf.disable()).authorizeExchange(ex -> ex.anyExchange().permitAll()).build();
+        }
     }
 }

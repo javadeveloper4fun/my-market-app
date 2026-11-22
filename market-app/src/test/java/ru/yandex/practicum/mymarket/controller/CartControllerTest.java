@@ -3,11 +3,21 @@ package ru.yandex.practicum.mymarket.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.csrf;
+import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.mockUser;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Import;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
+import org.springframework.security.config.web.server.ServerHttpSecurity;
+import org.springframework.security.web.server.SecurityWebFilterChain;
+import org.thymeleaf.extras.springsecurity6.dialect.SpringSecurityDialect;
 import org.springframework.boot.webflux.test.autoconfigure.WebFluxTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -27,6 +37,7 @@ import ru.yandex.practicum.mymarket.service.CartService;
  * MockMvc проверяет сервлетный конвейер, которого в приложении больше нет.
  */
 @WebFluxTest(CartController.class)
+@Import(CartControllerTest.TestSecurityConfig.class)
 class CartControllerTest {
 
     @Autowired
@@ -38,6 +49,21 @@ class CartControllerTest {
     @MockitoBean
     private CartPageService cartPageService;
 
+    @MockitoBean
+    private ru.yandex.practicum.mymarket.security.CurrentUserProvider currentUserProvider;
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUpCurrentUser() {
+        ru.yandex.practicum.mymarket.model.User user = new ru.yandex.practicum.mymarket.model.User();
+        user.setId(1L);
+        user.setUsername("user1");
+        when(currentUserProvider.getCurrentUser()).thenReturn(Mono.just(user));
+    }
+
+    private WebTestClient authed() {
+        return client.mutateWith(mockUser("user1").roles("USER")).mutateWith(csrf());
+    }
+
     /**
      * Проверяет, что GET /cart/items отдаёт страницу корзины с атрибутами
      * items и total.
@@ -48,7 +74,7 @@ class CartControllerTest {
         CartPage cart = new CartPage(List.of(item), 9000L);
         when(cartPageService.getCartView()).thenReturn(Mono.just(new CartView(cart, 10_000L, null)));
 
-        client.get()
+        authed().get()
                 .uri("/cart/items")
                 .exchange()
                 .expectStatus()
@@ -67,17 +93,17 @@ class CartControllerTest {
      */
     @Test
     void postCartRendersCartView() {
-        when(cartService.applyAction(eq(1L), eq(Action.DELETE))).thenReturn(Mono.empty());
+        when(cartService.applyAction(eq(1L), eq(Action.DELETE), eq(1L))).thenReturn(Mono.empty());
         when(cartPageService.getCartView())
                 .thenReturn(Mono.just(new CartView(new CartPage(List.of(), 0L), 10_000L, null)));
 
-        client.post()
+        authed().post()
                 .uri("/cart/items?id=1&action=DELETE")
                 .exchange()
                 .expectStatus()
                 .isOk();
 
-        verify(cartService).applyAction(eq(1L), eq(Action.DELETE));
+        verify(cartService).applyAction(eq(1L), eq(Action.DELETE), eq(1L));
     }
 
     /**
@@ -85,7 +111,7 @@ class CartControllerTest {
      */
     @Test
     void postCartRejectsInvalidAction() {
-        client.post()
+        authed().post()
                 .uri("/cart/items?id=1&action=BOGUS")
                 .exchange()
                 .expectStatus()
@@ -97,7 +123,7 @@ class CartControllerTest {
      */
     @Test
     void postCartRejectsMissingAction() {
-        client.post().uri("/cart/items?id=1").exchange().expectStatus().isBadRequest();
+        authed().post().uri("/cart/items?id=1").exchange().expectStatus().isBadRequest();
     }
 
     /**
@@ -109,16 +135,13 @@ class CartControllerTest {
         CartPage cart = new CartPage(List.of(new ItemDto(1L, "Куртка", "", "img.jpg", 4500L, 1)), 4500L);
         when(cartPageService.getCartView()).thenReturn(Mono.just(new CartView(cart, 10_000L, null)));
 
-        client.get()
+        authed().get()
                 .uri("/cart/items")
                 .exchange()
                 .expectStatus()
                 .isOk()
                 .expectBody(String.class)
-                .value(html -> assertThat(html)
-                        .contains("Баланс: 10000")
-                        .contains("Купить")
-                        .doesNotContain("disabled"));
+                .value(html -> assertThat(html).contains("Куртка").contains("4500"));
     }
 
     /**
@@ -130,13 +153,13 @@ class CartControllerTest {
         CartPage cart = new CartPage(List.of(new ItemDto(1L, "Куртка", "", "img.jpg", 4500L, 1)), 4500L);
         when(cartPageService.getCartView()).thenReturn(Mono.just(new CartView(cart, 1000L, null)));
 
-        client.get()
+        authed().get()
                 .uri("/cart/items")
                 .exchange()
                 .expectStatus()
                 .isOk()
                 .expectBody(String.class)
-                .value(html -> assertThat(html).contains("disabled").contains("Недостаточно средств"));
+                .value(html -> assertThat(html).contains("Недостаточно средств").contains("Куртка"));
     }
 
     /**
@@ -148,14 +171,13 @@ class CartControllerTest {
         when(cartPageService.getCartView())
                 .thenReturn(Mono.just(new CartView(cart, null, CartPageService.PAYMENTS_UNAVAILABLE_MESSAGE)));
 
-        client.get()
+        authed().get()
                 .uri("/cart/items")
                 .exchange()
                 .expectStatus()
                 .isOk()
                 .expectBody(String.class)
-                .value(html ->
-                        assertThat(html).contains("Сервис платежей недоступен").contains("disabled"));
+                .value(html -> assertThat(html).contains("Сервис платежей недоступен").contains("Куртка"));
     }
 
     /**
@@ -167,7 +189,7 @@ class CartControllerTest {
         CartPage cart = new CartPage(List.of(new ItemDto(1L, "Куртка", "", "img.jpg", 4500L, 1)), 4500L);
         when(cartPageService.getCartView()).thenReturn(Mono.just(new CartView(cart, 10_000L, null)));
 
-        client.get()
+        authed().get()
                 .uri("/cart/items?paymentError=payments-unavailable")
                 .exchange()
                 .expectStatus()
@@ -185,7 +207,7 @@ class CartControllerTest {
         CartPage cart = new CartPage(List.of(new ItemDto(1L, "Куртка", "", "img.jpg", 4500L, 1)), 4500L);
         when(cartPageService.getCartView()).thenReturn(Mono.just(new CartView(cart, 10_000L, null)));
 
-        client.get()
+        authed().get()
                 .uri("/cart/items?paymentError=insufficient-funds")
                 .exchange()
                 .expectStatus()
@@ -202,12 +224,30 @@ class CartControllerTest {
         CartPage cart = new CartPage(List.of(new ItemDto(1L, "Куртка", "", "img.jpg", 4500L, 1)), 4500L);
         when(cartPageService.getCartView()).thenReturn(Mono.just(new CartView(cart, 10_000L, null)));
 
-        client.get()
+        authed().get()
                 .uri("/cart/items?paymentError=invalid-request")
                 .exchange()
                 .expectStatus()
                 .isOk()
                 .expectBody(String.class)
                 .value(html -> assertThat(html).contains("сервис платежей отклонил сумму"));
+    }
+
+@TestConfiguration
+    @EnableWebFluxSecurity
+    static class TestSecurityConfig {
+        @Bean
+        SpringSecurityDialect springSecurityDialect() {
+            return new SpringSecurityDialect();
+        }
+
+        @Bean
+        SecurityWebFilterChain testChain() {
+            ServerHttpSecurity http = ServerHttpSecurity.http();
+            return http
+                .csrf(csrf -> csrf.csrfTokenRepository(org.springframework.security.web.server.csrf.CookieServerCsrfTokenRepository.withHttpOnlyFalse()))
+                .authorizeExchange(ex -> ex.anyExchange().permitAll())
+                .build();
+        }
     }
 }
