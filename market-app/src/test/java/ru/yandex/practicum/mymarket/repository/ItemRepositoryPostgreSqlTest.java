@@ -42,6 +42,8 @@ import ru.yandex.practicum.mymarket.support.DatabaseResetTest;
 @ActiveProfiles("testcontainers")
 class ItemRepositoryPostgreSqlTest extends DatabaseResetTest {
 
+    private static final Long USER_ID = 1L;
+
     @Autowired
     private ItemRepository itemRepository;
 
@@ -134,10 +136,10 @@ class ItemRepositoryPostgreSqlTest extends DatabaseResetTest {
     void countsCartItemsOnlyForRequestedIds() {
         Item jacket = save(new Item("Куртка", "Тёплая куртка", "images/jacket.jpg", new BigDecimal("4500.00")));
         Item hat = save(new Item("Шапка", "Тёплая шапка", "images/boots.jpg", new BigDecimal("999.99")));
-        cartItemRepository.save(new CartItem(jacket.getId(), 3)).block();
+        cartItemRepository.save(new CartItem(jacket.getId(), 3, USER_ID)).block();
 
         List<CartItem> positions = cartItemRepository
-                .findAllByItemIdIn(List.of(hat.getId()))
+                .findAllByItemIdInAndUserId(List.of(hat.getId()), USER_ID)
                 .collectList()
                 .block();
 
@@ -153,10 +155,10 @@ class ItemRepositoryPostgreSqlTest extends DatabaseResetTest {
     @Test
     void countsCartItemForRequestedId() {
         Item jacket = save(new Item("Куртка", "Тёплая куртка", "images/jacket.jpg", new BigDecimal("4500.00")));
-        cartItemRepository.save(new CartItem(jacket.getId(), 3)).block();
+        cartItemRepository.save(new CartItem(jacket.getId(), 3, USER_ID)).block();
 
         List<CartItem> positions = cartItemRepository
-                .findAllByItemIdIn(List.of(jacket.getId()))
+                .findAllByItemIdInAndUserId(List.of(jacket.getId()), USER_ID)
                 .collectList()
                 .block();
 
@@ -176,14 +178,14 @@ class ItemRepositoryPostgreSqlTest extends DatabaseResetTest {
     void decreaseCountUpdatesOnlyRequestedCartItem() {
         Item jacket = save(new Item("Куртка", "Тёплая куртка", "images/jacket.jpg", new BigDecimal("4500.00")));
         Item hat = save(new Item("Шапка", "Тёплая шапка", "images/boots.jpg", new BigDecimal("999.99")));
-        cartItemRepository.save(new CartItem(jacket.getId(), 5)).block();
-        cartItemRepository.save(new CartItem(hat.getId(), 4)).block();
+        cartItemRepository.save(new CartItem(jacket.getId(), 5, USER_ID)).block();
+        cartItemRepository.save(new CartItem(hat.getId(), 4, USER_ID)).block();
 
-        assertThat(cartItemRepository.decreaseCount(jacket.getId(), 2).block()).isEqualTo(1);
+        assertThat(cartItemRepository.decreaseCount(jacket.getId(), 2, USER_ID).block()).isEqualTo(1);
 
         CartItem jacketPosition =
-                cartItemRepository.findByItemId(jacket.getId()).block();
-        CartItem hatPosition = cartItemRepository.findByItemId(hat.getId()).block();
+                cartItemRepository.findByItemIdAndUserId(jacket.getId(), USER_ID).block();
+        CartItem hatPosition = cartItemRepository.findByItemIdAndUserId(hat.getId(), USER_ID).block();
         assertThat(jacketPosition).isNotNull();
         assertThat(jacketPosition.getCount()).isEqualTo(3);
         assertThat(hatPosition).isNotNull();
@@ -201,17 +203,17 @@ class ItemRepositoryPostgreSqlTest extends DatabaseResetTest {
     void deleteIfEmptyRemovesOnlyNonPositivePositions() {
         Item jacket = save(new Item("Куртка", "Тёплая куртка", "images/jacket.jpg", new BigDecimal("4500.00")));
         Item hat = save(new Item("Шапка", "Тёплая шапка", "images/boots.jpg", new BigDecimal("999.99")));
-        cartItemRepository.save(new CartItem(jacket.getId(), 1)).block();
-        cartItemRepository.save(new CartItem(hat.getId(), 3)).block();
+        cartItemRepository.save(new CartItem(jacket.getId(), 1, USER_ID)).block();
+        cartItemRepository.save(new CartItem(hat.getId(), 3, USER_ID)).block();
 
-        cartItemRepository.decreaseCount(jacket.getId(), 2).block();
-        cartItemRepository.decreaseCount(hat.getId(), 1).block();
+        cartItemRepository.decreaseCount(jacket.getId(), 2, USER_ID).block();
+        cartItemRepository.decreaseCount(hat.getId(), 1, USER_ID).block();
 
-        assertThat(cartItemRepository.deleteIfEmpty(jacket.getId()).block()).isEqualTo(1);
-        assertThat(cartItemRepository.deleteIfEmpty(hat.getId()).block()).isZero();
+        assertThat(cartItemRepository.deleteIfEmpty(jacket.getId(), USER_ID).block()).isEqualTo(1);
+        assertThat(cartItemRepository.deleteIfEmpty(hat.getId(), USER_ID).block()).isZero();
 
-        assertThat(cartItemRepository.findByItemId(jacket.getId()).block()).isNull();
-        CartItem hatPosition = cartItemRepository.findByItemId(hat.getId()).block();
+        assertThat(cartItemRepository.findByItemIdAndUserId(jacket.getId(), USER_ID).block()).isNull();
+        CartItem hatPosition = cartItemRepository.findByItemIdAndUserId(hat.getId(), USER_ID).block();
         assertThat(hatPosition).isNotNull();
         assertThat(hatPosition.getCount()).isEqualTo(2);
     }
@@ -226,7 +228,7 @@ class ItemRepositoryPostgreSqlTest extends DatabaseResetTest {
     void decreaseCountReturnsZeroWhenPositionIsAbsent() {
         Item jacket = save(new Item("Куртка", "Тёплая куртка", "images/jacket.jpg", new BigDecimal("4500.00")));
 
-        assertThat(cartItemRepository.decreaseCount(jacket.getId(), 1).block()).isZero();
+        assertThat(cartItemRepository.decreaseCount(jacket.getId(), 1, USER_ID).block()).isZero();
     }
 
     /**

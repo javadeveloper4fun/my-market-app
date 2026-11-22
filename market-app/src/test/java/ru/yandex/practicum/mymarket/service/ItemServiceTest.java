@@ -30,6 +30,13 @@ import ru.yandex.practicum.mymarket.support.DatabaseResetTest;
 @ActiveProfiles("test")
 class ItemServiceTest extends DatabaseResetTest {
 
+    private static final Long USER_ID = 1L;
+
+    @org.junit.jupiter.api.BeforeEach
+    void seedUser() {
+        databaseClient.sql("MERGE INTO users (id, username, password_hash, enabled, created_at) KEY(id) VALUES (1, 'test', '{noop}p', true, CURRENT_TIMESTAMP)").then().block();
+    }
+
     @Autowired
     private ItemService itemService;
 
@@ -45,7 +52,7 @@ class ItemServiceTest extends DatabaseResetTest {
         saveItem("Тестовый рюкзак", "Городской", "2000");
         saveItem("Тестовая футболка", "Летняя", "3000");
 
-        ItemsPage page = itemService.getItems("Тестов", "ALPHA", 1, 10).block();
+        ItemsPage page = itemService.getItems("Тестов", "ALPHA", 1, 10, 1L).block();
 
         assertThat(page.rows()).hasSize(1);
         List<ItemDto> row = page.rows().get(0);
@@ -64,12 +71,12 @@ class ItemServiceTest extends DatabaseResetTest {
         saveItem("Тестовый рюкзак", "2", "2000");
         saveItem("Тестовая футболка", "3", "3000");
 
-        ItemsPage firstPage = itemService.getItems("Тестов", "NO", 1, 2).block();
+        ItemsPage firstPage = itemService.getItems("Тестов", "NO", 1, 2, 1L).block();
         assertThat(firstPage.rows()).hasSize(1);
         assertThat(firstPage.rows().get(0)).hasSize(3);
         assertThat(firstPage.paging().hasNext()).isTrue();
 
-        ItemsPage secondPage = itemService.getItems("Тестов", "NO", 2, 2).block();
+        ItemsPage secondPage = itemService.getItems("Тестов", "NO", 2, 2, 1L).block();
         assertThat(secondPage.paging().hasNext()).isFalse();
     }
 
@@ -82,7 +89,7 @@ class ItemServiceTest extends DatabaseResetTest {
         saveItem("100% хлопок", "Куртка", "1000");
         saveItem("Куртка", "Описание", "2000");
 
-        ItemsPage page = itemService.getItems("100%", "NO", 1, 10).block();
+        ItemsPage page = itemService.getItems("100%", "NO", 1, 10, 1L).block();
 
         assertThat(page.search()).isEqualTo("100%");
         assertThat(page.rows()).extracting(row -> row.get(0).title()).containsExactly("100% хлопок");
@@ -92,11 +99,11 @@ class ItemServiceTest extends DatabaseResetTest {
     void getItemsExposesEmptyStringInViewWhenSearchParamIsAbsentOrBlank() {
         saveItem("Тестовая куртка", "1", "1000");
 
-        ItemsPage blankPage = itemService.getItems("", "NO", 1, 10).block();
+        ItemsPage blankPage = itemService.getItems("", "NO", 1, 10, 1L).block();
         assertThat(blankPage.search()).isEmpty();
         assertThat(blankPage.rows()).hasSize(1);
 
-        ItemsPage absentPage = itemService.getItems(null, "NO", 1, 10).block();
+        ItemsPage absentPage = itemService.getItems(null, "NO", 1, 10, 1L).block();
         assertThat(absentPage.search()).isEmpty();
         assertThat(absentPage.rows()).hasSize(1);
     }
@@ -105,7 +112,7 @@ class ItemServiceTest extends DatabaseResetTest {
     void getItemsTreatsZeroOrNegativePageNumberAsFirstPage() {
         saveItem("Тестовая куртка", "1", "1000");
 
-        ItemsPage page = itemService.getItems("Тестовая", "NO", 0, 2).block();
+        ItemsPage page = itemService.getItems("Тестовая", "NO", 0, 2, 1L).block();
 
         assertThat(page.paging().pageNumber()).isEqualTo(1);
         assertThat(page.paging().hasPrevious()).isFalse();
@@ -129,7 +136,7 @@ class ItemServiceTest extends DatabaseResetTest {
         saveItem("Тестовый рюкзак", "Городской рюкзак", "2000");
         saveItem("Тестовая футболка", "Летняя", "3000");
 
-        ItemsPage page = itemService.getItems("Городской", "NO", 1, 10).block();
+        ItemsPage page = itemService.getItems("Городской", "NO", 1, 10, 1L).block();
 
         assertThat(page.rows()).hasSize(1);
         // Строка дополняется пустыми заглушками до трёх элементов, поэтому считаем
@@ -141,9 +148,9 @@ class ItemServiceTest extends DatabaseResetTest {
     @Test
     void getItemReturnsCountFromCart() {
         Item item = saveItem("Тестовый товар", "Описание", "1500");
-        cartItemRepository.save(new CartItem(item.getId(), 3)).block();
+        cartItemRepository.save(new CartItem(item.getId(), 3, 1L)).block();
 
-        ItemDto dto = itemService.getItem(item.getId()).block();
+        ItemDto dto = itemService.getItem(item.getId(), 1L).block();
 
         assertThat(dto.id()).isEqualTo(item.getId());
         assertThat(dto.count()).isEqualTo(3);
@@ -162,7 +169,7 @@ class ItemServiceTest extends DatabaseResetTest {
     void getItemTruncatesFractionalPriceToWholeRubles() {
         Item item = saveItem("Тестовый товар", "Описание", "999.99");
 
-        ItemDto dto = itemService.getItem(item.getId()).block();
+        ItemDto dto = itemService.getItem(item.getId(), 1L).block();
 
         assertThat(dto.price()).isEqualTo(999L);
         assertThat(itemRepository.findById(item.getId()).block().getPrice()).isEqualByComparingTo("999.99");

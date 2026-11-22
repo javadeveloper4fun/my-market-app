@@ -33,6 +33,13 @@ import ru.yandex.practicum.mymarket.support.DatabaseResetTest;
 @ActiveProfiles("test")
 class CartServiceTest extends DatabaseResetTest {
 
+    private static final Long USER_ID = 1L;
+
+    @org.junit.jupiter.api.BeforeEach
+    void seedUser() {
+        databaseClient.sql("MERGE INTO users (id, username, password_hash, enabled, created_at) KEY(id) VALUES (1, 'test', '{noop}p', true, CURRENT_TIMESTAMP)").then().block();
+    }
+
     @Autowired
     private CartService cartService;
 
@@ -46,10 +53,10 @@ class CartServiceTest extends DatabaseResetTest {
     void getCartReturnsItemsAndTotal() {
         Item item1 = saveItem("Тестовая куртка", "Зимняя", "1000");
         Item item2 = saveItem("Тестовый рюкзак", "Городской", "2000");
-        cartItemRepository.save(new CartItem(item1.getId(), 2)).block();
-        cartItemRepository.save(new CartItem(item2.getId(), 1)).block();
+        cartItemRepository.save(new CartItem(item1.getId(), 2, USER_ID)).block();
+        cartItemRepository.save(new CartItem(item2.getId(), 1, USER_ID)).block();
 
-        CartPage cart = cartService.getCart().block();
+        CartPage cart = cartService.getCart(1L).block();
 
         assertThat(cart.items()).hasSize(2);
         assertThat(cart.items())
@@ -60,7 +67,7 @@ class CartServiceTest extends DatabaseResetTest {
 
     @Test
     void getCartEmptyReturnsZeroTotal() {
-        CartPage cart = cartService.getCart().block();
+        CartPage cart = cartService.getCart(1L).block();
 
         assertThat(cart.items()).isEmpty();
         assertThat(cart.total()).isEqualTo(0L);
@@ -70,9 +77,9 @@ class CartServiceTest extends DatabaseResetTest {
     void applyActionPlusAddsNew() {
         Item item = saveItem("Тестовый товар", "Описание", "1500");
 
-        cartService.applyAction(item.getId(), Action.PLUS).block();
+        cartService.applyAction(item.getId(), Action.PLUS, 1L).block();
 
-        CartItem saved = cartItemRepository.findByItemId(item.getId()).block();
+        CartItem saved = cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block();
         assertThat(saved).isNotNull();
         assertThat(saved.getCount()).isEqualTo(1);
     }
@@ -91,8 +98,8 @@ class CartServiceTest extends DatabaseResetTest {
     void applyActionPlusTwiceIncrementsInsteadOfInsertingSecondRow() {
         Item item = saveItem("Тестовый товар", "Описание", "1500");
 
-        cartService.applyAction(item.getId(), Action.PLUS).block();
-        cartService.applyAction(item.getId(), Action.PLUS).block();
+        cartService.applyAction(item.getId(), Action.PLUS, 1L).block();
+        cartService.applyAction(item.getId(), Action.PLUS, 1L).block();
 
         List<CartItem> all = cartItemRepository.findAll().collectList().block();
         assertThat(all).hasSize(1);
@@ -102,11 +109,11 @@ class CartServiceTest extends DatabaseResetTest {
     @Test
     void applyActionPlusIncrementsExisting() {
         Item item = saveItem("Тестовый товар", "Описание", "1500");
-        cartItemRepository.save(new CartItem(item.getId(), 2)).block();
+        cartItemRepository.save(new CartItem(item.getId(), 2, 1L)).block();
 
-        cartService.applyAction(item.getId(), Action.PLUS).block();
+        cartService.applyAction(item.getId(), Action.PLUS, 1L).block();
 
-        CartItem saved = cartItemRepository.findByItemId(item.getId()).block();
+        CartItem saved = cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block();
         assertThat(saved).isNotNull();
         assertThat(saved.getCount()).isEqualTo(3);
     }
@@ -114,11 +121,11 @@ class CartServiceTest extends DatabaseResetTest {
     @Test
     void applyActionMinusDecrements() {
         Item item = saveItem("Тестовый товар", "Описание", "1500");
-        cartItemRepository.save(new CartItem(item.getId(), 3)).block();
+        cartItemRepository.save(new CartItem(item.getId(), 3, USER_ID)).block();
 
-        cartService.applyAction(item.getId(), Action.MINUS).block();
+        cartService.applyAction(item.getId(), Action.MINUS, 1L).block();
 
-        CartItem saved = cartItemRepository.findByItemId(item.getId()).block();
+        CartItem saved = cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block();
         assertThat(saved).isNotNull();
         assertThat(saved.getCount()).isEqualTo(2);
     }
@@ -126,28 +133,28 @@ class CartServiceTest extends DatabaseResetTest {
     @Test
     void applyActionMinusRemovesWhenZero() {
         Item item = saveItem("Тестовый товар", "Описание", "1500");
-        cartItemRepository.save(new CartItem(item.getId(), 1)).block();
+        cartItemRepository.save(new CartItem(item.getId(), 1, 1L)).block();
 
-        cartService.applyAction(item.getId(), Action.MINUS).block();
+        cartService.applyAction(item.getId(), Action.MINUS, 1L).block();
 
-        assertThat(cartItemRepository.findByItemId(item.getId()).block()).isNull();
+        assertThat(cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block()).isNull();
     }
 
     @Test
     void applyActionDeleteRemoves() {
         Item item = saveItem("Тестовый товар", "Описание", "1500");
-        cartItemRepository.save(new CartItem(item.getId(), 5)).block();
+        cartItemRepository.save(new CartItem(item.getId(), 5, USER_ID)).block();
 
-        cartService.applyAction(item.getId(), Action.DELETE).block();
+        cartService.applyAction(item.getId(), Action.DELETE, 1L).block();
 
-        assertThat(cartItemRepository.findByItemId(item.getId()).block()).isNull();
+        assertThat(cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block()).isNull();
     }
 
     @Test
     void applyActionDeleteNonExistentIsNoOp() {
-        cartService.applyAction(999L, Action.DELETE).block();
+        cartService.applyAction(999L, Action.DELETE, 1L).block();
 
-        assertThat(cartItemRepository.findByItemId(999L).block()).isNull();
+        assertThat(cartItemRepository.findByItemIdAndUserId(999L, 1L).block()).isNull();
     }
 
     /**
@@ -156,7 +163,7 @@ class CartServiceTest extends DatabaseResetTest {
      */
     @Test
     void applyActionPlusOnMissingItemFails() {
-        assertThatThrownBy(() -> cartService.applyAction(999L, Action.PLUS).block())
+        assertThatThrownBy(() -> cartService.applyAction(999L, Action.PLUS, 1L).block())
                 .isInstanceOf(ItemNotFoundException.class);
     }
 
