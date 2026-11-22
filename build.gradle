@@ -1,116 +1,70 @@
 plugins {
-    id 'java'
-    id 'org.springframework.boot' version '4.1.1'
-    id 'io.spring.dependency-management' version '1.1.7'
-    id 'checkstyle'
-    id 'com.diffplug.spotless' version '8.10.2'
+    id 'base'
+    id 'org.springframework.boot' version '4.1.1' apply false
+    id 'io.spring.dependency-management' version '1.1.7' apply false
+    id 'com.diffplug.spotless' version '8.10.2' apply false
+    id 'org.openapi.generator' version '7.14.0' apply false
 }
 
-group = 'ru.yandex.practicum'
-version = '0.0.1-SNAPSHOT'
+allprojects {
+    group = 'ru.yandex.practicum'
+    version = '0.0.1-SNAPSHOT'
 
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
+    repositories {
+        mavenCentral()
     }
 }
 
-repositories {
-    mavenCentral()
-}
+subprojects {
+    apply plugin: 'java'
+    apply plugin: 'checkstyle'
+    apply plugin: 'com.diffplug.spotless'
+    apply plugin: 'io.spring.dependency-management'
 
-dependencies {
-    implementation 'org.springframework.boot:spring-boot-starter-webflux'
-    // Спринт 6 — реактивный доступ к данным. R2DBC не блокирует: вместо
-    // синхронного DataSource возвращается ConnectionFactory, а репозитории
-    // отдают Flux и Mono. Замена JPA осознанна: Hibernate ORM блокирующий,
-    // Hibernate Reactive закрывает не все нужные случаи.
-    implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc'
-    implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
-
-    // Драйверы нужны оба, и это не дублирование. Приложение ходит в БД
-    // через R2DBC (r2dbc-postgresql), а Liquibase — через JDBC (postgresql):
-    // миграции выполняются до старта приложения и в реактивный поток
-    // не вписываются. Убрав один из драйверов, получим либо отказ
-    // соединения на старте, либо неоткаченные миграции.
-    runtimeOnly 'org.postgresql:r2dbc-postgresql'
-    runtimeOnly 'org.postgresql:postgresql'
-
-    // Спринт 5, Тема 4 — миграции схемы БД.
-    // Нужны две зависимости, и это не дублирование:
-    // liquibase-core — сам Liquibase (разбор changelog, выполнение changeset'ов),
-    // версию подставляет spring-boot-dependencies из dependencyManagement ниже.
-    // spring-boot-liquibase — автоконфигурация Spring Boot. В Spring Boot 4
-    // автоконфигурация разнесена по отдельным модулям, и LiquibaseAutoConfiguration
-    // лежит именно в spring-boot-liquibase. Без него одного liquibase-core
-    // недостаточно: бин liquibase просто не создастся, миграции не выполнятся.
-    implementation 'org.liquibase:liquibase-core'
-    implementation 'org.springframework.boot:spring-boot-liquibase'
-
-    // Спринт 6, Тема 11 «Проектная работа» — хранение картинок товаров в S3:
-    // выбранный способ выполнить требование задания о загрузке списка товаров.
-    // AWS SDK подключается напрямую, без Spring Cloud AWS: тот завязан на
-    // Boot 3.x, а проект живёт на Boot 4.1.1. Версии модулей задаёт bom —
-    // управления версиями AWS SDK в spring-boot-dependencies нет. Клиент —
-    // netty-nio: HTTP-клиент на Netty не занимает потоки, apache-client
-    // опирается на них.
-    implementation platform('software.amazon.awssdk:bom:2.46.7')
-    implementation 'software.amazon.awssdk:s3'
-    runtimeOnly 'software.amazon.awssdk:netty-nio-client'
-
-    compileOnly 'org.projectlombok:lombok'
-    annotationProcessor 'org.projectlombok:lombok'
-    testCompileOnly 'org.projectlombok:lombok'
-    testAnnotationProcessor 'org.projectlombok:lombok'
-
-    // Тесты на H2 идут через R2DBC, поэтому нужен r2dbc-h2. Драйвер h2
-    // остаётся тоже: через JDBC к нему подключается Liquibase.
-    testRuntimeOnly 'io.r2dbc:r2dbc-h2'
-    testRuntimeOnly 'com.h2database:h2'
-
-    testImplementation 'org.springframework.boot:spring-boot-starter-webflux-test'
-    testImplementation 'org.springframework.boot:spring-boot-starter-data-r2dbc-test'
-
-    // Спринт 5, Тема 5, Урок 2 — проверка схемы и запросов на настоящей СУБД.
-    // H2 в MODE=PostgreSQL отличается от PostgreSQL, поэтому для части тестов
-    // поднимается реальный сервер в контейнере.
-    // spring-boot-testcontainers — аннотация @ServiceConnection: берёт url,
-    // имя пользователя и пароль из контейнера, поэтому @DynamicPropertySource
-    // писать не нужно. testcontainers-postgresql — контейнер с PostgreSQL,
-    // testcontainers-junit-jupiter — интеграция контейнеров с JUnit. Префикс
-    // testcontainers- в именах модулей относится к Testcontainers 2.x, в 1.x
-    // они назывались postgresql и junit-jupiter.
-    //
-    // Отдельного testcontainers-r2dbc нет: версия 2.0.5 не публикуется, и
-    // интерфейс R2DBCDatabaseContainer из него недоступен. Поэтому в
-    // PostgreSqlTestContainerConfiguration фабрика соединений R2DBC собирается
-    // из контейнера вручную — причина описана там же.
-    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
-    testImplementation 'org.testcontainers:testcontainers-postgresql'
-    testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-}
-
-dependencyManagement {
-    imports {
-        mavenBom "org.springframework.boot:spring-boot-dependencies:4.1.1"
-    }
-}
-
-tasks.named('test') {
-    useJUnitPlatform()
-}
-
-spotless {
     java {
-        target 'src/*/java/**/*.java'
-        palantirJavaFormat('2.98.0')
-        removeUnusedImports()
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(25)
+        }
     }
-}
 
-checkstyle {
-    toolVersion = '10.12.5'
-    configFile = file("${rootDir}/config/checkstyle/checkstyle.xml")
-    ignoreFailures = false
+    dependencyManagement {
+        imports {
+            mavenBom "org.springframework.boot:spring-boot-dependencies:4.1.1"
+        }
+    }
+
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+    }
+
+    tasks.withType(Javadoc).configureEach {
+        options.encoding = 'UTF-8'
+        exclude 'ru/yandex/practicum/payments/client/**'
+        exclude 'ru/yandex/practicum/payments/api/**'
+        exclude 'ru/yandex/practicum/payments/model/**'
+    }
+
+    // Javadoc проверяет сборку в check, чтобы не копить ошибки.
+    // Сгенерированные пакеты OpenAPI исключены: это сторонний код.
+    tasks.named('check') {
+        dependsOn tasks.named('javadoc')
+    }
+
+    tasks.withType(Test).configureEach {
+        useJUnitPlatform()
+    }
+
+    spotless {
+        java {
+            target 'src/*/java/**/*.java'
+            palantirJavaFormat('2.98.0')
+            removeUnusedImports()
+        }
+    }
+
+    checkstyle {
+        toolVersion = '10.12.5'
+        configFile = rootProject.file('config/checkstyle/checkstyle.xml')
+        ignoreFailures = false
+    }
 }

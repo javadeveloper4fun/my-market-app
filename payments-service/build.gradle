@@ -1,0 +1,52 @@
+plugins {
+    id 'org.springframework.boot'
+}
+
+def generatedPaymentsServerDir = layout.buildDirectory.dir('generated/payments-server')
+
+sourceSets {
+    main {
+        java {
+            srcDir generatedPaymentsServerDir.map { it.dir('src/main/java') }
+        }
+    }
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-webflux'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-webflux-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.register('generatePaymentsServer', org.openapitools.generator.gradle.plugin.tasks.GenerateTask) {
+    generatorName = 'spring'
+    inputSpec = rootProject.file('api/payments-api.yaml').absolutePath
+    outputDir = generatedPaymentsServerDir.get().asFile.absolutePath
+    apiPackage = 'ru.yandex.practicum.payments.api'
+    modelPackage = 'ru.yandex.practicum.payments.model'
+    configOptions = [
+        reactive: 'true',
+        interfaceOnly: 'true',
+        skipDefaultInterface: 'true',
+        useSpringBoot3: 'true',
+        useTags: 'true',
+        useJakartaEe: 'true',
+        openApiNullable: 'false',
+        documentationProvider: 'none'
+    ]
+}
+
+tasks.named('compileJava') {
+    dependsOn 'generatePaymentsServer'
+}
+
+tasks.named('checkstyleMain') {
+    source = fileTree('src/main/java')
+}
+
+tasks.named('checkstyleTest') {
+    source = fileTree('src/test/java')
+}

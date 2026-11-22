@@ -8,12 +8,16 @@
 *.ipr
 
 # Сборка
-# build/ исключается целиком: JAR собирается внутри образа (стадия builder
-# в Dockerfile), поэтому артефакты, собранные на хосте, в контекст не нужны.
-# Прежнее исключение !build/libs/ здесь больше не требуется.
+# Исключаем артефакты сборки, кроме bootJar в build/libs:
+# docker compose собирает образы из заранее собранных jar.
 .gradle/
-build/
+**/build/classes/
+**/build/generated/
+**/build/reports/
+**/build/resources/
+**/build/test-results/
+**/build/tmp/
+**/build/libs/*-plain.jar
 
 # Временные и аналитические файлы
-*.ps1
 analize*.txt

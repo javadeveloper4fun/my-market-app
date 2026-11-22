@@ -1,0 +1,103 @@
+openapi: 3.0.3
+info:
+  title: Payments API
+  version: 1.0.0
+  description: RESTful-сервис платежей витрины интернет-магазина.
+servers:
+  - url: http://localhost:8081
+    description: Локальный запуск
+paths:
+  /api/v1/balance:
+    get:
+      operationId: getBalance
+      tags:
+        - balance
+      summary: Получить текущий баланс
+      responses:
+        '200':
+          description: Текущий баланс
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BalanceResponse'
+  /api/v1/payments:
+    post:
+      operationId: createPayment
+      tags:
+        - payments
+      summary: Списать сумму заказа
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentRequest'
+      responses:
+        '200':
+          description: Платёж выполнен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          description: Некорректная сумма
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '402':
+          description: Недостаточно средств
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  schemas:
+    BalanceResponse:
+      type: object
+      required:
+        - balance
+      properties:
+        balance:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Баланс в целых рублях
+    PaymentRequest:
+      type: object
+      required:
+        - amount
+      properties:
+        amount:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Сумма списания в целых рублях
+    PaymentResponse:
+      type: object
+      required:
+        - amount
+        - balance
+      properties:
+        amount:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Списанная сумма в целых рублях
+        balance:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Остаток баланса в целых рублях
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: Машиночитаемый код ошибки
+        message:
+          type: string
+          description: Человекочитаемое описание
