@@ -15,15 +15,13 @@ import ru.yandex.practicum.mymarket.payments.PaymentsUnavailableException;
 import ru.yandex.practicum.mymarket.service.CheckoutService;
 import ru.yandex.practicum.mymarket.service.EmptyCartException;
 import ru.yandex.practicum.mymarket.service.OrderService;
+import ru.yandex.practicum.mymarket.security.CurrentUserProvider;
 
 /**
  * Заказы покупателя: список заказов, карточка заказа и оформление.
  *
- * <p>Контроллер возвращает {@link Mono} с именем шаблона Thymeleaf, а не готовую
- * страницу. Оформление заказа ({@code /buy}) делегируется {@link CheckoutService}:
- * снимок корзины с фиксацией цен, оплата вне транзакции, затем сохранение заказа
- * и корректировка купленных позиций корзины в одной транзакции. Такой порядок не
- * создаёт заказ без оплаты и не теряет товар, добавленный после снимка корзины.
+ * <p>Все операции выполняются в контексте текущего авторизованного пользователя.
+ * Оформление заказа ({@code /buy}) делегируется {@link CheckoutService}.
  */
 @Controller
 public class OrderController {
@@ -32,59 +30,45 @@ public class OrderController {
 
     private final OrderService orderService;
     private final CheckoutService checkoutService;
+    private final CurrentUserProvider currentUserProvider;
 
-    public OrderController(OrderService orderService, CheckoutService checkoutService) {
+    public OrderController(OrderService orderService, CheckoutService checkoutService,
+                           CurrentUserProvider currentUserProvider) {
         this.orderService = orderService;
         this.checkoutService = checkoutService;
+        this.currentUserProvider = currentUserProvider;
     }
 
     /**
-     * Отдаёт страницу со списком заказов.
-     *
-     * @param model модель представления
-     * @return имя шаблона списка заказов
+     * Отдаёт страницу со списком заказов текущего пользователя.
      */
     @GetMapping("/orders")
     public Mono<String> getOrders(Model model) {
-        return orderService
-                .getOrders()
-                .doOnNext(orders -> model.addAttribute("orders", orders))
+        return currentUserProvider
+                .getCurrentUser()
+                .flatMap(user -> orderService.getOrders(user.getId())
+                        .doOnNext(orders -> model.addAttribute("orders", orders)))
                 .thenReturn("orders");
     }
 
     /**
-     * Отдаёт страницу совершённого заказа.
-     *
-     * @param id       идентификатор заказа
-     * @param newOrder признак перехода с кнопки покупки
-     * @param model    модель представления
-     * @return имя шаблона заказа
+     * Отдаёт страницу совершённого заказа текущего пользователя.
      */
     @GetMapping("/orders/{id}")
     public Mono<String> getOrder(
             @PathVariable long id, @RequestParam(defaultValue = "false") boolean newOrder, Model model) {
-        return orderService
-                .getOrder(id)
-                .doOnNext(order -> {
-                    model.addAttribute("order", order);
-                    model.addAttribute("newOrder", newOrder);
-                })
+        return currentUserProvider
+                .getCurrentUser()
+                .flatMap(user -> orderService.getOrder(id, user.getId())
+                        .doOnNext(order -> {
+                            model.addAttribute("order", order);
+                            model.addAttribute("newOrder", newOrder);
+                        }))
                 .thenReturn("order");
     }
 
     /**
-     * Оформляет заказ из корзины.
-     *
-     * <p>Покупка разделена на три шага в {@link CheckoutService}: снимок корзины,
-     * оплата вне транзакции, сохранение заказа. Контроллер только переводит
-     * ожидаемые ошибки в редирект с сообщением; неожиданные ошибки уходят в
-     * {@code GlobalExceptionHandler}.
-     *
-     * <p>Особенно важен случай {@code 402}: при недостатке средств заказ не
-     * создаётся, а корзина остаётся нетронутой. Пользователь возвращается в
-     * корзину и видит причину, а не пустую страницу с 500.
-     *
-     * @return имя шаблона заказа или редирект в корзину
+     * Оформляет заказ из корзины текущего пользователя.
      */
     @PostMapping("/buy")
     public Mono<String> buy() {

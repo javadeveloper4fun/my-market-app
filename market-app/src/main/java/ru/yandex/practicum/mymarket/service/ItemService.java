@@ -79,15 +79,16 @@ public class ItemService {
     }
 
     /**
-     * Собирает страницу витрины.
+     * Собирает страницу витрины для пользователя.
      *
      * @param search     строка поиска, может быть пустой
      * @param sort       сортировка: {@code NO}, {@code ALPHA} или {@code PRICE}
      * @param pageNumber номер страницы, начиная с 1
      * @param pageSize   товаров на странице
+     * @param userId     идентификатор пользователя (может быть {@code null} для анонима)
      * @return страница витрины
      */
-    public Mono<ItemsPage> getItems(String search, String sort, int pageNumber, int pageSize) {
+    public Mono<ItemsPage> getItems(String search, String sort, int pageNumber, int pageSize, Long userId) {
         String searchForView = (search != null) ? search.trim() : "";
         String querySearch = !searchForView.isBlank() ? escapeLike(searchForView) : null;
         String requestedSort = (sort == null || sort.isBlank()) ? "NO" : sort;
@@ -121,7 +122,7 @@ public class ItemService {
                                     .flatMap(page ->
                                             itemCache.putPage(cacheKey, page).thenReturn(page))))
                     .flatMap(page ->
-                            withCartCounts(page, searchForView, canonicalSort, normalizedPageNumber, pageLimit));
+                            withCartCounts(page, userId, searchForView, canonicalSort, normalizedPageNumber, pageLimit));
         });
     }
 
@@ -165,12 +166,13 @@ public class ItemService {
     }
 
     /**
-     * Возвращает карточку товара вместе с количеством в корзине.
+     * Возвращает карточку товара вместе с количеством в корзине пользователя.
      *
-     * @param id идентификатор товара
+     * @param id     идентификатор товара
+     * @param userId идентификатор пользователя (может быть {@code null} для анонима — тогда 0)
      * @return карточка товара
      */
-    public Mono<ItemDto> getItem(long id) {
+    public Mono<ItemDto> getItem(long id, Long userId) {
         return itemCache
                 .getItem(id)
                 .flatMap(cachedItem -> cachedItem
@@ -183,18 +185,22 @@ public class ItemService {
                                 .switchIfEmpty(Mono.error(() -> new ItemNotFoundException(id)))
                                 .map(CachedItem::fromEntity)
                                 .flatMap(item -> itemCache.putItem(item).thenReturn(item))))
-                // Товар найден; теперь читаем его позицию в корзине. flatMap
-                // нужен потому, что следующий шаг тоже асинхронный.
-                .flatMap(cachedItem -> cartItemRepository
-                        .findByItemId(id)
-                        // Дальше нужен только счётчик, а не вся сущность CartItem.
-                        .map(CartItem::getCount)
-                        // Позиции в корзине может не быть — это 0, а не пустой
-                        // результат: карточка товара всё равно должна отрисоваться.
-                        .defaultIfEmpty(0)
-                        // Собираем DTO из товара и количества; это последний
-                        // шаг цепочки, подписку сделает вызывающий код.
-                        .map(cachedItem::toDto));
+                // Товар найден; теперь читаем его позицию в корзине пользователя.
+                .flatMap(cachedItem -> {
+                    if (userId == null) {
+                        // Аноним не имеет корзины: количество равно нулю.
+                        return Mono.just(cachedItem.toDto(0));
+                    }
+                    return cartItemRepository
+                            .findByItemIdAndUserId(id, userId)
+                            // Дальше нужен только счётчик, а не вся сущность CartItem.
+                            .map(CartItem::getCount)
+                            // Позиции в корзине может не быть — это 0, а не пустой
+                            // результат: карточка товара всё равно должна отрисоваться.
+                            .defaultIfEmpty(0)
+                            // Собираем DTO из товара и количества.
+                            .map(cachedItem::toDto);
+                });
     }
 
     /**
@@ -308,13 +314,7 @@ public class ItemService {
                 // он никому не виден. Неудача удаления только логируется,
                 // чтобы не замаскировать исходную ошибку.
                 .onErrorResume(error -> imageStorageService.delete(key).then(Mono.error(error)))
-                .flatMap(saved -> cartItemRepository
-                        .findByItemId(saved.getId())
-                        .map(CartItem::getCount)
-                        // Товара в корзине нет — это 0, а не пустой результат:
-                        // карточка товара всё равно должна отрисоваться.
-                        .defaultIfEmpty(0)
-                        .map(count -> ItemDto.fromEntity(saved, count)));
+                .map(saved -> ItemDto.fromEntity(saved, 0));
     }
 
     /**
@@ -332,13 +332,20 @@ public class ItemService {
      * @return страница витрины
      */
     private Mono<ItemsPage> withCartCounts(
-            CachedItemsPage page, String search, String sort, int pageNumber, int pageLimit) {
+            CachedItemsPage page, Long userId, String search, String sort, int pageNumber, int pageLimit) {
         if (page.items().isEmpty()) {
             return Mono.just(new ItemsPage(List.of(), search, sort, Paging.of(pageLimit, pageNumber, page.total())));
         }
+        if (userId == null) {
+            // Аноним не имеет корзины: все количества равны нулю.
+            List<ItemDto> dtos = page.items().stream()
+                    .map(item -> item.toDto(0))
+                    .toList();
+            return Mono.just(ItemsPage.of(dtos, search, sort, Paging.of(pageLimit, pageNumber, page.total())));
+        }
         List<Long> itemIds = page.items().stream().map(CachedItem::id).toList();
         return cartItemRepository
-                .findAllByItemIdIn(itemIds)
+                .findAllByItemIdInAndUserId(itemIds, userId)
                 .collectMap(CartItem::getItemId, CartItem::getCount)
                 .map(counts -> {
                     List<ItemDto> dtos = page.items().stream()

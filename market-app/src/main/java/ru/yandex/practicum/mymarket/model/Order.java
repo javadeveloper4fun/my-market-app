@@ -10,9 +10,9 @@ import org.springframework.data.relational.core.mapping.Table;
 /**
  * Заказ покупателя.
  *
- * <p>Строка таблицы {@code orders} без коллекции позиций. Имя таблицы указано
- * явно: по умолчанию из класса {@code Order} получилось бы {@code order}, а в
- * схеме — {@code orders}.
+ * <p>Строка таблицы {@code orders} с identificatorом владельца ({@code user_id}).
+ * Имя таблицы указано явно: по умолчанию из класса {@code Order} получилось бы
+ * {@code order}, а в схеме — {@code orders}.
  *
  * <p>Позиции здесь намеренно не хранятся. Первой версией была связь
  * {@code @MappedCollection}, и она выглядела естественно — такой приём
@@ -25,7 +25,7 @@ import org.springframework.data.relational.core.mapping.Table;
  * сохраняются отдельными вызовами, а связь задаётся полем {@code orderId} в
  * {@link OrderItem}, которое проставляет
  * {@code OrderService.placeOrder(PreparedOrder)}; шаги «подготовка — оплата —
- * сохранение» оркеструет {@code CheckoutService}.
+ * сохранение» оркеструют {@code CheckoutService}.
  *
  * <p>Такой сценарий неудобен: связь держится на дисциплине вызывающего кода, а
  * не проверяется преобразователем. Но альтернативы у R2DBC нет, и честнее
@@ -41,4 +41,10 @@ public class Order {
 
     @Id
     private Long id;
+
+    private Long userId;
+
+    public Order(Long userId) {
+        this.userId = userId;
+    }
 }

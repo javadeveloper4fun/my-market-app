@@ -18,6 +18,7 @@ import ru.yandex.practicum.mymarket.service.Action;
 import ru.yandex.practicum.mymarket.service.CartService;
 import ru.yandex.practicum.mymarket.service.ImageUploadException;
 import ru.yandex.practicum.mymarket.service.ItemService;
+import ru.yandex.practicum.mymarket.security.CurrentUserProvider;
 
 /**
  * Контроллер витрины товаров.
@@ -27,10 +28,13 @@ public class ItemsController {
 
     private final ItemService itemService;
     private final CartService cartService;
+    private final CurrentUserProvider currentUserProvider;
 
-    public ItemsController(ItemService itemService, CartService cartService) {
+    public ItemsController(ItemService itemService, CartService cartService,
+                           CurrentUserProvider currentUserProvider) {
         this.itemService = itemService;
         this.cartService = cartService;
+        this.currentUserProvider = currentUserProvider;
     }
 
     @GetMapping({"/", "/items"})
@@ -40,15 +44,20 @@ public class ItemsController {
             @RequestParam(defaultValue = "") String search,
             @RequestParam(defaultValue = "NO") String sort,
             Model model) {
-        return itemService
-                .getItems(search, sort, pageNumber, pageSize)
-                .doOnNext(page -> {
-                    model.addAttribute("items", page.rows());
-                    model.addAttribute("search", page.search());
-                    model.addAttribute("sort", page.sort());
-                    model.addAttribute("paging", page.paging());
-                    model.addAttribute("placeholderId", ItemDto.PLACEHOLDER_ID);
-                })
+        return currentUserProvider
+                .getCurrentUser()
+                .map(user -> user.getId())
+                .defaultIfEmpty(null)
+                .flatMap(userId -> itemService
+                        .getItems(search, sort, pageNumber, pageSize, userId)
+                        .doOnNext(page -> {
+                            model.addAttribute("items", page.rows());
+                            model.addAttribute("search", page.search());
+                            model.addAttribute("sort", page.sort());
+                            model.addAttribute("paging", page.paging());
+                            model.addAttribute("placeholderId", ItemDto.PLACEHOLDER_ID);
+                        })
+                )
                 .thenReturn("items");
     }
 
@@ -69,7 +78,10 @@ public class ItemsController {
                 .build()
                 .toUriString();
 
-        return cartService.applyAction(id, action).thenReturn("redirect:" + url);
+        return currentUserProvider
+                .getCurrentUser()
+                .flatMap(user -> cartService.applyAction(id, action, user.getId()))
+                .thenReturn("redirect:" + url);
     }
 
     @GetMapping("/items/new")
@@ -89,18 +101,24 @@ public class ItemsController {
 
     @GetMapping("/items/{id}")
     public Mono<String> getItem(@PathVariable long id, Model model) {
-        return itemService
-                .getItem(id)
-                .doOnNext(item -> model.addAttribute("item", item))
+        return currentUserProvider
+                .getCurrentUser()
+                .map(user -> user.getId())
+                .defaultIfEmpty(null)
+                .flatMap(userId -> itemService
+                        .getItem(id, userId)
+                        .doOnNext(item -> model.addAttribute("item", item))
+                )
                 .thenReturn("item");
     }
 
     @PostMapping("/items/{id}")
     public Mono<String> changeItemCountOnItemPage(@PathVariable long id, @RequestParam Action action, Model model) {
-        return cartService
-                .applyAction(id, action)
-                .then(itemService.getItem(id))
-                .doOnNext(item -> model.addAttribute("item", item))
+        return currentUserProvider
+                .getCurrentUser()
+                .flatMap(user -> cartService.applyAction(id, action, user.getId())
+                        .then(itemService.getItem(id, user.getId()))
+                        .doOnNext(item -> model.addAttribute("item", item)))
                 .thenReturn("item");
     }
 
