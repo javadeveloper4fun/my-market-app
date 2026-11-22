@@ -52,15 +52,17 @@ public class SecurityConfig {
     public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http,
                                                             ReactiveUserDetailsServiceImpl userDetailsService) throws Exception {
         http
-            // CSRF включён для браузерных форм (логин, изменения корзины, оформление заказа).
+            // CSRF нужен для небезопасных методов (POST), изменяющих состояние (корзина, оформление заказа).
             // Токен CSRF передаётся в Thymeleaf-формах через hidden-поле.
             .csrf(csrf -> csrf.csrfTokenRepository(
                     new org.springframework.security.web.server.csrf.CookieServerCsrfTokenRepository()))
             .authorizeExchange(exchanges -> exchanges
-                // Публичные страницы: витрина, карточка товара, статика, логин, ошибки.
-                .pathMatchers("/", "/items", "/items/**", "/images/**", "/css/**", "/js/**",
+                // Публичное действие витрины: создание товара только для авторизованного пользователя.
+                .pathMatchers("/items/new").authenticated()
+                // Публичные страницы: витрина, карточка товара, статика, логин, ошибка.
+                .pathMatchers("/", "/items", "/items/*", "/images/**", "/css/**", "/js/**",
                         "/webjars/**", "/login", "/error").permitAll()
-                // Защищённые зоны: только для авторизованных пользователей.
+                // Закрытые зоны: только для аутентифицированных пользователей.
                 .pathMatchers("/cart/**", "/orders/**", "/buy").authenticated()
                 .anyExchange().authenticated()
             )
@@ -73,7 +75,7 @@ public class SecurityConfig {
                 .logoutUrl("/logout")
                 .logoutSuccessHandler(redirectServerLogoutSuccessHandler())
             )
-            // OAuth2 Client для получения токена при вызовах payments-service (настраивается отдельно на Этапе 3).
+            // OAuth2 Client для получения токена по клиентским credentials для payments-service.
             .oauth2Client(org.springframework.security.config.Customizer.withDefaults());
 
         return http.build();

@@ -39,6 +39,7 @@
                         <!-- enctype обязателен: без него браузер отправит форму
                              как обычные данные, и файл картинки не дойдёт. -->
                         <form th:action="@{/items/new}" method="post" enctype="multipart/form-data">
+                            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
                             <div class="mb-3">
                                 <label class="form-label" for="title">Название</label>
                                 <input class="form-control" type="text" id="title" name="title"
