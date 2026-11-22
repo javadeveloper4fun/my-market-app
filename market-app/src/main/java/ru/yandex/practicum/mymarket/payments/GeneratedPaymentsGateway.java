@@ -1,6 +1,6 @@
 package ru.yandex.practicum.mymarket.payments;
 
-import java.util.concurrent.TimeoutException;
+import java.time.Duration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -12,22 +12,11 @@ import ru.yandex.practicum.payments.client.model.BalanceResponse;
 import ru.yandex.practicum.payments.client.model.PaymentRequest;
 import ru.yandex.practicum.payments.client.model.PaymentResponse;
 
-/**
- * Шлюз к сервису платежей на сгенерированном OpenAPI-клиенте.
- *
- * <p>Клиент создаётся из спецификации {@code api/payments-api.yaml}, поэтому
- * адрес, модели и формат ошибок совпадают с контрактом сервиса. Бизнес-ошибки
- * переводятся в исключения витрины: остальной код не должен зависеть от
- * {@code WebClientResponseException} и HTTP-статусов.
- *
- * <p>Запросы в payments-service выполняются через {@link WebClient} с
- * OAuth2 Bearer-токеном (Client Credentials Flow), который добавляется
- * фильтром {@link ru.yandex.practicum.mymarket.config.OAuth2ClientConfig#paymentsWebClient()}.
- */
 @Component
 public class GeneratedPaymentsGateway implements PaymentsGateway {
 
     private static final Logger LOG = LoggerFactory.getLogger(GeneratedPaymentsGateway.class);
+    private static final String USER_HEADER = "X-User-Id";
 
     private final WebClient paymentsWebClient;
     private final PaymentsProperties properties;
@@ -38,10 +27,11 @@ public class GeneratedPaymentsGateway implements PaymentsGateway {
     }
 
     @Override
-    public Mono<Long> getBalance() {
+    public Mono<Long> getBalance(long userId) {
         return paymentsWebClient
                 .get()
                 .uri(properties.baseUrl() + "/api/v1/balance")
+                .header(USER_HEADER, String.valueOf(userId))
                 .retrieve()
                 .bodyToMono(BalanceResponse.class)
                 .map(response -> response.getBalance() == null ? 0L : response.getBalance())
@@ -50,10 +40,11 @@ public class GeneratedPaymentsGateway implements PaymentsGateway {
     }
 
     @Override
-    public Mono<PaymentResult> pay(long amount) {
+    public Mono<PaymentResult> pay(long userId, long amount) {
         return paymentsWebClient
                 .post()
                 .uri(properties.baseUrl() + "/api/v1/payments")
+                .header(USER_HEADER, String.valueOf(userId))
                 .bodyValue(new PaymentRequest().amount(amount))
                 .retrieve()
                 .bodyToMono(PaymentResponse.class)
@@ -62,45 +53,41 @@ public class GeneratedPaymentsGateway implements PaymentsGateway {
                 .onErrorMap(this::mapError);
     }
 
-    /**
-     * Преобразует ответ сервиса в результат витрины.
-     *
-     * @param response ответ сервиса
-     * @return результат списания
-     */
     private PaymentResult toResult(PaymentResponse response) {
-        long paid = response.getAmount() == null ? 0L : response.getAmount();
+        long amount = response.getAmount() == null ? 0L : response.getAmount();
         long balance = response.getBalance() == null ? 0L : response.getBalance();
-        return new PaymentResult(paid, balance);
+        return new PaymentResult(amount, balance);
     }
 
-    /**
-     * Переводит технические ошибки клиента в ошибки предметной области.
-     *
-     * @param error исходная ошибка
-     * @return ошибка для бизнес-логики
-     */
     private Throwable mapError(Throwable error) {
-        if (error instanceof InsufficientFundsException
-                || error instanceof PaymentsUnavailableException
+        if (error instanceof PaymentsUnavailableException
+                || error instanceof InsufficientFundsException
                 || error instanceof InvalidPaymentRequestException) {
             return error;
         }
         if (error instanceof WebClientResponseException responseException) {
-            int status = responseException.getStatusCode().value();
-            if (status == HttpStatus.PAYMENT_REQUIRED.value()) {
+            if (responseException.getStatusCode() == HttpStatus.PAYMENT_REQUIRED) {
                 return new InsufficientFundsException();
             }
-            if (status == HttpStatus.BAD_REQUEST.value()) {
-                LOG.warn("Сервис платежей отклонил запрос: {}", responseException.getResponseBodyAsString());
-                return new InvalidPaymentRequestException("Сервис платежей отклонил сумму платежа", error);
+            if (responseException.getStatusCode().is4xxClientError()) {
+                return new InvalidPaymentRequestException("Сервис платежей отклонил запрос оплаты");
             }
+            LOG.warn("Payments service returned status {}", responseException.getStatusCode());
+            return new PaymentsUnavailableException("Сервис платежей временно недоступен", responseException);
         }
-        if (error instanceof TimeoutException) {
-            LOG.warn("Сервис платежей не ответил за отведённое время: {}", error.getMessage());
+        if (isTimeout(error)) {
+            LOG.warn("Payments service timed out after {}", properties.timeout());
             return new PaymentsUnavailableException("Сервис платежей не ответил вовремя", error);
         }
-        LOG.warn("Ошибка обращения к сервису платежей: {}", error.getMessage());
+        LOG.warn("Payments service call failed", error);
         return new PaymentsUnavailableException("Сервис платежей временно недоступен", error);
+    }
+
+    private boolean isTimeout(Throwable error) {
+        if (error instanceof java.util.concurrent.TimeoutException) {
+            return true;
+        }
+        Throwable cause = error.getCause();
+        return cause != null && cause != error && isTimeout(cause);
     }
 }
