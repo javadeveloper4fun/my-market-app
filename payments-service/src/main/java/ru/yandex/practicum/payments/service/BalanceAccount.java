@@ -51,11 +51,12 @@ public class BalanceAccount {
      *
      * @param amount сумма в целых рублях, должна быть положительной
      * @return остаток после успешного списания
+     * @throws InvalidAmountException если сумма неположительна
      * @throws InsufficientFundsException если средств недостаточно
      */
     public long withdraw(long amount) {
         if (amount <= 0) {
-            throw new IllegalArgumentException("Сумма платежа должна быть положительной");
+            throw new InvalidAmountException();
         }
         while (true) {
             long current = balance.get();
