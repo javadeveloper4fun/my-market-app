@@ -161,9 +161,11 @@ services:
       KC_DB_PASSWORD: keycloak
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
-    command: ["start-dev", "--optimized"]
+    command: ["start-dev", "--import-realm"]
     ports:
       - "8082:8080"
+    volumes:
+      - ./docker/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
     depends_on:
       keycloak-postgres:
         condition: service_healthy
