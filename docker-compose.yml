@@ -33,12 +33,10 @@ services:
       MARKET_PAYMENTS_BASE_URL: http://payments-service:8081
       MARKET_CACHE_ITEMS_TTL: PT5M
       # Спринт 8 — OAuth2 Client Credentials для вызовов payments-service.
-      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_MARKET-APP_CLIENT_ID: market-app
-      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_MARKET-APP_CLIENT_SECRET: market-secret
-      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_MARKET-APP_AUTHORIZATION_GRANT_TYPE: client_credentials
-      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_MARKET-APP_TOKEN_URI: http://keycloak:8080/realms/market/protocol/openid-connect/token
-      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_MARKET-APP_ISSUER_URI: http://keycloak:8080/realms/market
-    ports:
+      MARKET_OAUTH2_CLIENT_ID: market-app
+      MARKET_OAUTH2_CLIENT_SECRET: market-secret
+            MARKET_OAUTH2_TOKEN_URI: http://keycloak:8080/realms/market/protocol/openid-connect/token
+          ports:
       - "8080:8080"
     depends_on:
       market-postgres:
@@ -63,6 +61,7 @@ services:
       PAYMENTS_INITIAL_BALANCE: 10000
       # Спринт 8 — OAuth2 Resource Server: валидация JWT от Keycloak.
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://keycloak:8080/realms/market
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/market/protocol/openid-connect/certs
     ports:
       - "8081:8081"
     # Actuator healthcheck не зависит от бизнес-состояния баланса.
