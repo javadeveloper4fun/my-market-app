@@ -22,7 +22,7 @@
                     <a href="/items" class="btn btn-secondary bi bi-arrow-left-square"> Главная</a>
                     <a href="/login" class="btn btn-outline-primary ms-auto"
                        sec:authorize="isAnonymous()">Войти</a>
-                    <form method="post" action="/logout" class="d-inline"
+                    <form method="post" action="/logout" class="d-inline no-ajax"
                           sec:authorize="isAuthenticated()">
                         <input type="hidden" name="_csrf" th:value="${_csrf.token}"/>
                         <button type="submit" class="btn btn-outline-danger">Выйти</button>
@@ -114,7 +114,10 @@
                     await fetch(url.toString(), {
                         method: 'POST',
                         body: formData,
-                        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'X-XSRF-TOKEN': formData.get('_csrf')
+                        }
                     });
                 } catch (err) {
                     console.error(err);
