@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.csrf;
+import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.mockUser;
+import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.springSecurity;
 
 import java.nio.ByteBuffer;
 import org.junit.jupiter.api.Test;
@@ -44,7 +47,14 @@ import ru.yandex.practicum.mymarket.support.DatabaseResetTest;
 class ImagesControllerTest extends DatabaseResetTest {
 
     @Autowired
+    private org.springframework.context.ApplicationContext context;
+
     private WebTestClient client;
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUpClient() {
+        client = WebTestClient.bindToApplicationContext(context).apply(springSecurity()).configureClient().build();
+    }
 
     @MockitoBean
     private ImageStorageService imageStorageService;
@@ -57,7 +67,7 @@ class ImagesControllerTest extends DatabaseResetTest {
     void uploadReturnsPathUsableAsImgPath() {
         when(imageStorageService.upload(any())).thenReturn(Mono.just("d1f0c4a2.jpg"));
 
-        client.post()
+        client.mutateWith(mockUser("user").roles("USER")).mutateWith(csrf()).post()
                 .uri("/images")
                 .contentType(MediaType.MULTIPART_FORM_DATA)
                 .body(BodyInserters.fromMultipartData(formWith("photo.jpg", "image/jpeg")))
@@ -158,7 +168,8 @@ class ImagesControllerTest extends DatabaseResetTest {
      */
     @Test
     void newItemPageKeepsCartAndOrdersNavigation() {
-        client.get()
+        client.mutateWith(mockUser("user1").roles("USER"))
+                .get()
                 .uri("/items/new")
                 .exchange()
                 .expectStatus()
@@ -175,7 +186,7 @@ class ImagesControllerTest extends DatabaseResetTest {
         when(imageStorageService.upload(any()))
                 .thenReturn(Mono.error(new ImageUploadException("Недопустимый формат изображения.")));
 
-        client.post()
+        client.mutateWith(mockUser("user").roles("USER")).mutateWith(csrf()).post()
                 .uri("/images")
                 .contentType(MediaType.MULTIPART_FORM_DATA)
                 .body(BodyInserters.fromMultipartData(formWith("doc.pdf", "application/pdf")))
