@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<html lang="en" xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
 
 <head>
     <meta charset="utf-8">
@@ -18,9 +19,19 @@
                     <h2>
                         <span class="badge text-bg-success">Витрина магазина</span>
                     </h2>
-                    <a href="/orders" class="btn btn-secondary ms-auto bi bi-file-earmark-text"> Заказы</a>
-                    <a href="/cart/items" class="btn btn-secondary bi bi-cart4"> Корзина</a>
-                    <a href="/items/new" class="btn btn-outline-success bi bi-plus-circle"> Добавить товар</a>
+                    <a href="/orders" class="btn btn-secondary ms-auto bi bi-file-earmark-text"
+                       sec:authorize="isAuthenticated()">Заказы</a>
+                    <a href="/cart/items" class="btn btn-secondary bi bi-cart4"
+                       sec:authorize="isAuthenticated()">Корзина</a>
+                    <a href="/items/new" class="btn btn-outline-success bi bi-plus-circle"
+                       sec:authorize="isAuthenticated()">Добавить товар</a>
+                    <a href="/login" class="btn btn-outline-primary ms-auto"
+                       sec:authorize="isAnonymous()">Войти</a>
+                    <form method="post" action="/logout" class="d-inline"
+                          sec:authorize="isAuthenticated()">
+                        <input type="hidden" name="_csrf" th:value="${_csrf.token}"/>
+                        <button type="submit" class="btn btn-outline-danger">Выйти</button>
+                    </form>
                 </div>
             </div>
         </div>
@@ -63,7 +74,8 @@
                             <span class="badge text-bg-success justify-content-end" th:text="${item.price()}+' руб.'"></span>
                         </h5>
                         <p class="card-text" th:text="${item.description()}"></p>
-                        <form method="post">
+                        <form method="post" sec:authorize="isAuthenticated()">
+                            <input type="hidden" name="_csrf" th:value="${_csrf.token}"/>
                             <div class="hstack gap-3">
                                 <button type="submit" class="btn btn-outline-secondary"
                                         th:formaction="@{/items(id=${item.id()},action='MINUS',search=${search},sort=${sort},pageSize=${paging.pageSize()},pageNumber=${paging.pageNumber()})}">-</button>
