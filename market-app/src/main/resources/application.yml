@@ -71,6 +71,24 @@ market:
     base-url: ${MARKET_PAYMENTS_BASE_URL:http://localhost:8081}
     timeout: ${MARKET_PAYMENTS_TIMEOUT:2s}
 
+  oauth2:
+    token-uri: ${MARKET_OAUTH2_TOKEN_URI:http://localhost:8082/realms/market/protocol/openid-connect/token}
+    client-id: ${MARKET_OAUTH2_CLIENT_ID:market-app}
+    client-secret: ${MARKET_OAUTH2_CLIENT_SECRET:market-secret}
+
+  security:
+    oauth2:
+      client:
+        registration:
+          market-app:
+            provider: keycloak
+            client-id: ${MARKET_OAUTH2_CLIENT_ID:market-app}
+            client-secret: ${MARKET_OAUTH2_CLIENT_SECRET:market-secret}
+            authorization-grant-type: client_credentials
+        provider:
+          keycloak:
+            token-uri: ${MARKET_OAUTH2_TOKEN_URI:http://localhost:8082/realms/market/protocol/openid-connect/token}
+
   image-s3:
     # Адрес хранилища. Локально это S3Mock из docker-compose; в среде
     # эксплуатации подставляется настоящий S3 через переменную окружения.
@@ -83,3 +101,6 @@ market:
     # в multipart: одно проверяет сервер отправки, другое — прикладной код,
     # и без второй проверки файл всё равно уйдёт в хранилище.
     max-upload-size: 5MB
+
+
+
