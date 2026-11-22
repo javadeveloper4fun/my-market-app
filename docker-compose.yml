@@ -1,8 +1,9 @@
-# Docker Compose для проекта «Витрина интернет-магазина» (Спринт 7)
+# Docker Compose для проекта «Витрина интернет-магазина» (Спринт 8)
 #
 # Поднимает все сервисы стенда:
 #   market-app       — витрина (http://localhost:8080)
 #   payments-service — RESTful-сервис платежей (http://localhost:8081)
+#   keycloak         — Authorization Server OAuth2 (http://localhost:8082)
 #   redis            — кеш карточек и страниц каталога
 #   market-postgres  — персистентная БД PostgreSQL
 #   market-s3mock    — S3-совместимое хранилище картинок
@@ -31,6 +32,12 @@ services:
       SPRING_DATA_REDIS_PORT: 6379
       MARKET_PAYMENTS_BASE_URL: http://payments-service:8081
       MARKET_CACHE_ITEMS_TTL: PT5M
+      # Спринт 8 — OAuth2 Client Credentials для вызовов payments-service.
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_MARKET-APP_CLIENT_ID: market-app
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_MARKET-APP_CLIENT_SECRET: market-secret
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_MARKET-APP_AUTHORIZATION_GRANT_TYPE: client_credentials
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_MARKET-APP_TOKEN_URI: http://keycloak:8080/realms/market/protocol/openid-connect/token
+      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_MARKET-APP_ISSUER_URI: http://keycloak:8080/realms/market
     ports:
       - "8080:8080"
     depends_on:
@@ -42,6 +49,8 @@ services:
         condition: service_healthy
       payments-service:
         condition: service_healthy
+      keycloak:
+        condition: service_healthy
 
   payments-service:
     build:
@@ -52,6 +61,8 @@ services:
     environment:
       SERVER_PORT: 8081
       PAYMENTS_INITIAL_BALANCE: 10000
+      # Спринт 8 — OAuth2 Resource Server: валидация JWT от Keycloak.
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://keycloak:8080/realms/market
     ports:
       - "8081:8081"
     # Actuator healthcheck не зависит от бизнес-состояния баланса.
@@ -139,6 +150,49 @@ services:
         done
         echo "Картинки витрины загружены"
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.1.1
+    container_name: my-market-keycloak
+    restart: unless-stopped
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    command: ["start-dev", "--optimized"]
+    ports:
+      - "8082:8080"
+    depends_on:
+      keycloak-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health/ready || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+  keycloak-postgres:
+    image: postgres:17.5
+    container_name: my-market-keycloak-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak
+    ports:
+      - "5436:5432"
+    volumes:
+      - keycloak_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
 volumes:
   market_postgres_data:
   market_s3mock_data:
+  keycloak_postgres_data:
