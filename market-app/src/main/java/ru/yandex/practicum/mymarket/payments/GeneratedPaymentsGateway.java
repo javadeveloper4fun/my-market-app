@@ -5,11 +5,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Mono;
-import ru.yandex.practicum.payments.client.api.BalanceApi;
-import ru.yandex.practicum.payments.client.api.PaymentsApi;
-import ru.yandex.practicum.payments.client.invoker.ApiClient;
+import ru.yandex.practicum.payments.client.model.BalanceResponse;
 import ru.yandex.practicum.payments.client.model.PaymentRequest;
 import ru.yandex.practicum.payments.client.model.PaymentResponse;
 
@@ -20,38 +19,46 @@ import ru.yandex.practicum.payments.client.model.PaymentResponse;
  * адрес, модели и формат ошибок совпадают с контрактом сервиса. Бизнес-ошибки
  * переводятся в исключения витрины: остальной код не должен зависеть от
  * {@code WebClientResponseException} и HTTP-статусов.
+ *
+ * <p>Запросы в payments-service выполняются через {@link WebClient} с
+ * OAuth2 Bearer-токеном (Client Credentials Flow), который добавляется
+ * фильтром {@link ru.yandex.practicum.mymarket.config.OAuth2ClientConfig#paymentsWebClient()}.
  */
 @Component
 public class GeneratedPaymentsGateway implements PaymentsGateway {
 
     private static final Logger LOG = LoggerFactory.getLogger(GeneratedPaymentsGateway.class);
 
-    private final BalanceApi balanceApi;
-    private final PaymentsApi paymentsApi;
+    private final WebClient paymentsWebClient;
     private final PaymentsProperties properties;
 
-    public GeneratedPaymentsGateway(PaymentsProperties properties) {
+    public GeneratedPaymentsGateway(WebClient paymentsWebClient, PaymentsProperties properties) {
+        this.paymentsWebClient = paymentsWebClient;
         this.properties = properties;
-        ApiClient apiClient = new ApiClient().setBasePath(properties.baseUrl());
-        this.balanceApi = new BalanceApi(apiClient);
-        this.paymentsApi = new PaymentsApi(apiClient);
     }
 
     @Override
     public Mono<Long> getBalance() {
-        return balanceApi
-                .getBalance()
-                .timeout(properties.timeout())
+        return paymentsWebClient
+                .get()
+                .uri(properties.baseUrl() + "/api/v1/balance")
+                .retrieve()
+                .bodyToMono(BalanceResponse.class)
                 .map(response -> response.getBalance() == null ? 0L : response.getBalance())
+                .timeout(properties.timeout())
                 .onErrorMap(this::mapError);
     }
 
     @Override
     public Mono<PaymentResult> pay(long amount) {
-        return paymentsApi
-                .createPayment(new PaymentRequest().amount(amount))
-                .timeout(properties.timeout())
+        return paymentsWebClient
+                .post()
+                .uri(properties.baseUrl() + "/api/v1/payments")
+                .bodyValue(new PaymentRequest().amount(amount))
+                .retrieve()
+                .bodyToMono(PaymentResponse.class)
                 .map(this::toResult)
+                .timeout(properties.timeout())
                 .onErrorMap(this::mapError);
     }
 
