@@ -144,7 +144,6 @@ class ItemServiceCacheTest {
     void createItemInvalidatesPages() {
         when(itemRepository.save(any())).thenReturn(Mono.just(item()));
         when(itemCache.invalidatePages()).thenReturn(Mono.empty());
-        when(cartItemRepository.findByItemIdAndUserId(1L, 1L)).thenReturn(Mono.empty());
 
         itemService.saveWithImage("Куртка", "Описание", 1500, "key").block();
 
