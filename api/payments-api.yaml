@@ -1,18 +1,22 @@
 openapi: 3.0.3
 info:
   title: Payments API
-  version: 1.0.0
+  version: 1.1.0
   description: RESTful-сервис платежей витрины интернет-магазина.
 servers:
   - url: http://localhost:8081
-    description: Локальный запуск
+    description: Локальный сервер
+security:
+  - bearerAuth: []
 paths:
   /api/v1/balance:
     get:
       operationId: getBalance
       tags:
         - balance
-      summary: Получить текущий баланс
+      summary: Получить текущий баланс пользователя
+      parameters:
+        - $ref: '#/components/parameters/UserIdHeader'
       responses:
         '200':
           description: Текущий баланс
@@ -20,12 +24,26 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BalanceResponse'
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Доступ запрещён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /api/v1/payments:
     post:
       operationId: createPayment
       tags:
         - payments
-      summary: Списать сумму заказа
+      summary: Списать сумму покупки
+      parameters:
+        - $ref: '#/components/parameters/UserIdHeader'
       requestBody:
         required: true
         content:
@@ -45,13 +63,39 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '402':
           description: Недостаточно средств
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Доступ запрещён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    UserIdHeader:
+      name: X-User-Id
+      in: header
+      required: true
+      description: Идентификатор авторизованного пользователя витрины
+      schema:
+        type: integer
+        format: int64
   schemas:
     BalanceResponse:
       type: object

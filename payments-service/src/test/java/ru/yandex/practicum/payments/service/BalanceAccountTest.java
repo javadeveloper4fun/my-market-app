@@ -14,36 +14,25 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import ru.yandex.practicum.payments.config.PaymentsProperties;
 
-/**
- * Тесты атомарного счёта платежей.
- *
- * <p>Проверяется только поведение счёта без HTTP-слоя: этого достаточно, чтобы
- * зафиксировать правила списания и начальный баланс.
- */
 class BalanceAccountTest {
 
     @Test
-    void returnsInitialBalance() {
+    void returnsInitialBalancePerUser() {
         BalanceAccount account = new BalanceAccount(new PaymentsProperties(10_000L));
 
-        assertThat(account.getBalance()).isEqualTo(10_000L);
+        assertThat(account.getBalance(1L)).isEqualTo(10_000L);
+        assertThat(account.getBalance(2L)).isEqualTo(10_000L);
     }
 
     @Test
     void decreasesBalanceOnSuccessfulPayment() {
         BalanceAccount account = new BalanceAccount(new PaymentsProperties(10_000L));
 
-        assertThat(account.withdraw(1500L)).isEqualTo(8500L);
-        assertThat(account.getBalance()).isEqualTo(8500L);
+        assertThat(account.withdraw(1L, 1500L)).isEqualTo(8500L);
+        assertThat(account.getBalance(1L)).isEqualTo(8500L);
+        assertThat(account.getBalance(2L)).isEqualTo(10_000L);
     }
 
-    /**
-     * Проверяет, что одновременные списания не уводят баланс в минус.
-     *
-     * <p>Все потоки стартуют по одному сигналу и пытаются списать по 1000 при
-     * балансе 10 000. Успешных списаний должно быть ровно десять, остальные
-     * получают отказ, а итоговый баланс — ноль.
-     */
     @Test
     void withdrawsConcurrentlyWithoutOverdrawing() throws Exception {
         int threads = 32;
@@ -61,7 +50,7 @@ class BalanceAccountTest {
                         throw new IllegalStateException("Потоки не стартовали одновременно");
                     }
                     try {
-                        account.withdraw(amount);
+                        account.withdraw(1L, amount);
                         successes.incrementAndGet();
                     } catch (InsufficientFundsException expected) {
                         failures.incrementAndGet();
@@ -80,35 +69,35 @@ class BalanceAccountTest {
         assertThat(successes.get()).isEqualTo(10);
         assertThat(failures.get()).isEqualTo(22);
         assertThat(successes.get() + failures.get()).isEqualTo(threads);
-        assertThat(account.getBalance()).isZero();
+        assertThat(account.getBalance(1L)).isZero();
     }
 
     @Test
     void throwsOnInsufficientFunds() {
         BalanceAccount account = new BalanceAccount(new PaymentsProperties(1000L));
 
-        assertThatThrownBy(() -> account.withdraw(1500L))
+        assertThatThrownBy(() -> account.withdraw(1L, 1500L))
                 .isInstanceOf(InsufficientFundsException.class)
                 .hasMessageContaining("1500")
                 .hasMessageContaining("1000");
-        assertThat(account.getBalance()).isEqualTo(1000L);
+        assertThat(account.getBalance(1L)).isEqualTo(1000L);
     }
 
     @Test
     void throwsOnNonPositiveAmount() {
         BalanceAccount account = new BalanceAccount(new PaymentsProperties(1000L));
 
-        assertThatThrownBy(() -> account.withdraw(0)).isInstanceOf(InvalidAmountException.class);
-        assertThatThrownBy(() -> account.withdraw(-1)).isInstanceOf(InvalidAmountException.class);
+        assertThatThrownBy(() -> account.withdraw(1L, 0)).isInstanceOf(InvalidAmountException.class);
+        assertThatThrownBy(() -> account.withdraw(1L, -1)).isInstanceOf(InvalidAmountException.class);
     }
 
     @Test
     void resetRestoresInitialBalance() {
         BalanceAccount account = new BalanceAccount(new PaymentsProperties(10_000L));
-        account.withdraw(1500L);
+        account.withdraw(1L, 1500L);
 
         account.reset();
 
-        assertThat(account.getBalance()).isEqualTo(10_000L);
+        assertThat(account.getBalance(1L)).isEqualTo(10_000L);
     }
 }
