@@ -49,16 +49,13 @@ public class CartService {
      * @return корзина со списком позиций и суммой
      */
     public Mono<CartPage> getCart(Long userId) {
-        return cartItemRepository
-                .findAllSortedByUserId(userId)
-                .collectList()
-                .flatMap(cartItems -> {
-                    if (cartItems.isEmpty()) {
-                        return Mono.just(new CartPage(List.of(), 0L));
-                    }
-                    List<Long> itemIds = cartItems.stream().map(CartItem::getItemId).toList();
-                    return itemsByIds(itemIds).map(items -> toPage(cartItems, items));
-                });
+        return cartItemRepository.findAllSortedByUserId(userId).collectList().flatMap(cartItems -> {
+            if (cartItems.isEmpty()) {
+                return Mono.just(new CartPage(List.of(), 0L));
+            }
+            List<Long> itemIds = cartItems.stream().map(CartItem::getItemId).toList();
+            return itemsByIds(itemIds).map(items -> toPage(cartItems, items));
+        });
     }
 
     /**
@@ -135,10 +132,14 @@ public class CartService {
             return itemRepository
                     .findById(itemId)
                     .switchIfEmpty(Mono.error(() -> new ItemNotFoundException(itemId)))
-                    .then(cartItemRepository.save(new CartItem(itemId, 1, userId)).then())
+                    .then(cartItemRepository
+                            .save(new CartItem(itemId, 1, userId))
+                            .then())
                     .onErrorResume(
                             DuplicateKeyException.class,
-                            e -> cartItemRepository.increaseCount(itemId, userId).then());
+                            e -> cartItemRepository
+                                    .increaseCount(itemId, userId)
+                                    .then());
         });
     }
 

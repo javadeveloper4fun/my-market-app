@@ -37,7 +37,11 @@ class CartServiceTest extends DatabaseResetTest {
 
     @org.junit.jupiter.api.BeforeEach
     void seedUser() {
-        databaseClient.sql("MERGE INTO users (id, username, password_hash, enabled, created_at) KEY(id) VALUES (1, 'test', '{noop}p', true, CURRENT_TIMESTAMP)").then().block();
+        databaseClient
+                .sql("MERGE INTO users (id, username, password_hash, enabled, created_at) "
+                        + "KEY(id) VALUES (1, 'test', '{noop}p', true, CURRENT_TIMESTAMP)")
+                .then()
+                .block();
     }
 
     @Autowired
@@ -79,7 +83,8 @@ class CartServiceTest extends DatabaseResetTest {
 
         cartService.applyAction(item.getId(), Action.PLUS, 1L).block();
 
-        CartItem saved = cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block();
+        CartItem saved =
+                cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block();
         assertThat(saved).isNotNull();
         assertThat(saved.getCount()).isEqualTo(1);
     }
@@ -113,7 +118,8 @@ class CartServiceTest extends DatabaseResetTest {
 
         cartService.applyAction(item.getId(), Action.PLUS, 1L).block();
 
-        CartItem saved = cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block();
+        CartItem saved =
+                cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block();
         assertThat(saved).isNotNull();
         assertThat(saved.getCount()).isEqualTo(3);
     }
@@ -125,7 +131,8 @@ class CartServiceTest extends DatabaseResetTest {
 
         cartService.applyAction(item.getId(), Action.MINUS, 1L).block();
 
-        CartItem saved = cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block();
+        CartItem saved =
+                cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block();
         assertThat(saved).isNotNull();
         assertThat(saved.getCount()).isEqualTo(2);
     }
@@ -137,7 +144,8 @@ class CartServiceTest extends DatabaseResetTest {
 
         cartService.applyAction(item.getId(), Action.MINUS, 1L).block();
 
-        assertThat(cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block()).isNull();
+        assertThat(cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block())
+                .isNull();
     }
 
     @Test
@@ -147,7 +155,8 @@ class CartServiceTest extends DatabaseResetTest {
 
         cartService.applyAction(item.getId(), Action.DELETE, 1L).block();
 
-        assertThat(cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block()).isNull();
+        assertThat(cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block())
+                .isNull();
     }
 
     @Test

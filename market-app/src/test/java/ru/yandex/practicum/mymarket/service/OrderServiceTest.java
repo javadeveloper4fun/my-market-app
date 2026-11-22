@@ -42,7 +42,11 @@ class OrderServiceTest extends DatabaseResetTest {
 
     @org.junit.jupiter.api.BeforeEach
     void seedUser() {
-        databaseClient.sql("MERGE INTO users (id, username, password_hash, enabled, created_at) KEY(id) VALUES (1, 'test', '{noop}p', true, CURRENT_TIMESTAMP)").then().block();
+        databaseClient
+                .sql("MERGE INTO users (id, username, password_hash, enabled, created_at) "
+                        + "KEY(id) VALUES (1, 'test', '{noop}p', true, CURRENT_TIMESTAMP)")
+                .then()
+                .block();
     }
 
     @Autowired
@@ -120,7 +124,8 @@ class OrderServiceTest extends DatabaseResetTest {
 
         PreparedOrder prepared = orderService.prepareOrder(1L).block();
 
-        CartItem changed = cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block();
+        CartItem changed =
+                cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block();
         changed.setCount(3);
         cartItemRepository.save(changed).block();
 
@@ -134,7 +139,8 @@ class OrderServiceTest extends DatabaseResetTest {
             assertThat(saved.getItemId()).isEqualTo(item.getId());
             assertThat(saved.getCount()).isEqualTo(2);
         });
-        CartItem remaining = cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block();
+        CartItem remaining =
+                cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block();
         assertThat(remaining).isNotNull();
         assertThat(remaining.getCount()).isEqualTo(1);
     }

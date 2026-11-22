@@ -88,7 +88,8 @@ class CartItemRepositoryTest extends DatabaseResetTest {
         Item item = save(item("Куртка", "4500.00"));
         saveCartItem(item, 4);
 
-        CartItem found = cartItemRepository.findByItemIdAndUserId(item.getId(), USER_ID).block();
+        CartItem found =
+                cartItemRepository.findByItemIdAndUserId(item.getId(), USER_ID).block();
 
         assertThat(found).isNotNull();
         assertThat(found.getItemId()).isEqualTo(item.getId());
@@ -104,7 +105,10 @@ class CartItemRepositoryTest extends DatabaseResetTest {
     void findByItemIdReturnsEmptyWhenAbsent() {
         Item item = save(item("Куртка", "4500.00"));
 
-        assertThat(cartItemRepository.findByItemIdAndUserId(item.getId(), USER_ID).block()).isNull();
+        assertThat(cartItemRepository
+                        .findByItemIdAndUserId(item.getId(), USER_ID)
+                        .block())
+                .isNull();
     }
 
     /**
@@ -121,8 +125,9 @@ class CartItemRepositoryTest extends DatabaseResetTest {
         Item item = save(item("Куртка", "4500.00"));
         saveCartItem(item, 1);
 
-        assertThatThrownBy(() ->
-                        cartItemRepository.save(new CartItem(item.getId(), 1, USER_ID)).block())
+        assertThatThrownBy(() -> cartItemRepository
+                        .save(new CartItem(item.getId(), 1, USER_ID))
+                        .block())
                 .isInstanceOf(DuplicateKeyException.class);
     }
 
@@ -144,7 +149,9 @@ class CartItemRepositoryTest extends DatabaseResetTest {
      * @return сохранённая позиция
      */
     private CartItem saveCartItem(Item item, int count) {
-        return cartItemRepository.save(new CartItem(item.getId(), count, USER_ID)).block();
+        return cartItemRepository
+                .save(new CartItem(item.getId(), count, USER_ID))
+                .block();
     }
 
     /**

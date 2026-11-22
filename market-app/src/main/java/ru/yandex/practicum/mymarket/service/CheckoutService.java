@@ -17,28 +17,40 @@ public class CheckoutService {
     private final PaymentsGateway paymentsGateway;
     private final CurrentUserProvider currentUserProvider;
 
-    public CheckoutService(OrderService orderService, PaymentsGateway paymentsGateway,
-                           CurrentUserProvider currentUserProvider) {
+    public CheckoutService(
+            OrderService orderService, PaymentsGateway paymentsGateway, CurrentUserProvider currentUserProvider) {
         this.orderService = orderService;
         this.paymentsGateway = paymentsGateway;
         this.currentUserProvider = currentUserProvider;
     }
 
     public Mono<Long> checkout() {
-        return currentUserProvider.getCurrentUser()
+        return currentUserProvider
+                .getCurrentUser()
                 .switchIfEmpty(Mono.error(new EmptyCartException("User is not authenticated")))
-                .flatMap(user -> orderService.prepareOrder(user.getId())
-                        .flatMap(prepared -> paymentsGateway.pay(user.getId(), prepared.total()).thenReturn(prepared))
-                        .flatMap(prepared -> orderService.placeOrder(prepared, user.getId())
+                .flatMap(user -> orderService
+                        .prepareOrder(user.getId())
+                        .flatMap(prepared -> paymentsGateway
+                                .pay(user.getId(), prepared.total())
+                                .thenReturn(prepared))
+                        .flatMap(prepared -> orderService
+                                .placeOrder(prepared, user.getId())
                                 .onErrorResume(error -> {
                                     String itemIds = prepared.items().stream()
                                             .map(item -> String.valueOf(item.getItemId()))
                                             .collect(Collectors.joining(","));
                                     String snapshot = prepared.items().stream()
-                                            .map(item -> item.getItemId() + ":" + item.getTitle() + ":" + item.getPrice() + "x" + item.getCount())
+                                            .map(item -> item.getItemId() + ":" + item.getTitle() + ":"
+                                                    + item.getPrice() + "x" + item.getCount())
                                             .collect(Collectors.joining(","));
-                                    LOG.error("PAYMENT_SUCCEEDED_ORDER_FAILED amount={} itemsCount={} itemIds=[{}] snapshot=[{}]",
-                                            prepared.total(), prepared.items().size(), itemIds, snapshot, error);
+                                    LOG.error(
+                                            "PAYMENT_SUCCEEDED_ORDER_FAILED amount={} itemsCount={}"
+                                                    + " itemIds=[{}] snapshot=[{}]",
+                                            prepared.total(),
+                                            prepared.items().size(),
+                                            itemIds,
+                                            snapshot,
+                                            error);
                                     return Mono.error(error);
                                 })));
     }

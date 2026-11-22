@@ -9,7 +9,6 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.security.web.server.authentication.logout.RedirectServerLogoutSuccessHandler;
-import org.springframework.security.web.server.csrf.CookieServerCsrfTokenRepository;
 import ru.yandex.practicum.mymarket.security.ReactiveUserDetailsServiceImpl;
 
 /**
@@ -25,7 +24,9 @@ import ru.yandex.practicum.mymarket.security.ReactiveUserDetailsServiceImpl;
 public class SecurityConfig {
 
     /**
-     * Шифрование паролей: BCrypt. Пароли в БД хранят только в зашифрованном виде.
+     * Кодировщик паролей BCrypt.
+     *
+     * @return кодировщик паролей
      */
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -39,7 +40,9 @@ public class SecurityConfig {
      * @return настроенная {@link SecurityWebFilterChain}
      */
     /**
-     * После выхода перенаправляет пользователя на главную страницу.
+     * Обработчик успешного logout.
+     *
+     * @return обработчик редиректа
      */
     @Bean
     public RedirectServerLogoutSuccessHandler redirectServerLogoutSuccessHandler() {
@@ -48,35 +51,49 @@ public class SecurityConfig {
         return handler;
     }
 
+    /**
+     * Цепочка фильтров безопасности.
+     *
+     * @param http конфигурация HTTP security
+     * @param userDetailsService сервис загрузки пользователя
+     * @return цепочка фильтров
+     */
     @Bean
-    public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http,
-                                                            ReactiveUserDetailsServiceImpl userDetailsService) throws Exception {
+    public SecurityWebFilterChain springSecurityFilterChain(
+            ServerHttpSecurity http, ReactiveUserDetailsServiceImpl userDetailsService) {
         http
-            // CSRF нужен для небезопасных методов (POST), изменяющих состояние (корзина, оформление заказа).
-            // Токен CSRF передаётся в Thymeleaf-формах через hidden-поле.
-            .csrf(csrf -> csrf.csrfTokenRepository(
-                    new org.springframework.security.web.server.csrf.CookieServerCsrfTokenRepository()))
-            .authorizeExchange(exchanges -> exchanges
-                // Публичное действие витрины: создание товара только для авторизованного пользователя.
-                .pathMatchers("/items/new").authenticated()
-                // Публичные страницы: витрина, карточка товара, статика, логин, ошибка.
-                .pathMatchers("/", "/items", "/items/*", "/images/**", "/css/**", "/js/**",
-                        "/webjars/**", "/login", "/error").permitAll()
-                // Закрытые зоны: только для аутентифицированных пользователей.
-                .pathMatchers("/cart/**", "/orders/**", "/buy").authenticated()
-                .anyExchange().authenticated()
-            )
-            // Стандартная форма логина Spring Security.
-            .formLogin(form -> form
-                .loginPage("/login")
-            )
-            // Выход: очистка WebSession, куки и SecurityContext, редирект на главную.
-            .logout(logout -> logout
-                .logoutUrl("/logout")
-                .logoutSuccessHandler(redirectServerLogoutSuccessHandler())
-            )
-            // OAuth2 Client для получения токена по клиентским credentials для payments-service.
-            .oauth2Client(org.springframework.security.config.Customizer.withDefaults());
+                // CSRF нужен для небезопасных методов (POST), изменяющих состояние (корзина, оформление заказа).
+                // Токен CSRF передаётся в Thymeleaf-формах через hidden-поле.
+                .csrf(csrf -> csrf.csrfTokenRepository(
+                        new org.springframework.security.web.server.csrf.CookieServerCsrfTokenRepository()))
+                .authorizeExchange(exchanges -> exchanges
+                        // Публичное действие витрины: создание товара только для авторизованного пользователя.
+                        .pathMatchers("/items/new")
+                        .authenticated()
+                        // Публичные страницы: витрина, карточка товара, статика, логин, ошибка.
+                        .pathMatchers(
+                                "/",
+                                "/items",
+                                "/items/*",
+                                "/images/**",
+                                "/css/**",
+                                "/js/**",
+                                "/webjars/**",
+                                "/login",
+                                "/error")
+                        .permitAll()
+                        // Закрытые зоны: только для аутентифицированных пользователей.
+                        .pathMatchers("/cart/**", "/orders/**", "/buy")
+                        .authenticated()
+                        .anyExchange()
+                        .authenticated())
+                // Стандартная форма логина Spring Security.
+                .formLogin(form -> form.loginPage("/login"))
+                // Выход: очистка WebSession, куки и SecurityContext, редирект на главную.
+                .logout(logout ->
+                        logout.logoutUrl("/logout").logoutSuccessHandler(redirectServerLogoutSuccessHandler()))
+                // OAuth2 Client для получения токена по клиентским credentials для payments-service.
+                .oauth2Client(org.springframework.security.config.Customizer.withDefaults());
 
         return http.build();
     }

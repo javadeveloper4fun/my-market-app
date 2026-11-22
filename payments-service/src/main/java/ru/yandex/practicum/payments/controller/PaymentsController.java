@@ -26,8 +26,7 @@ public class PaymentsController implements BalanceApi, PaymentsApi {
 
     @Override
     public Mono<ResponseEntity<BalanceResponse>> getBalance(
-            @NotNull @RequestHeader(value = "X-User-Id", required = true) Long xUserId,
-            ServerWebExchange exchange) {
+            @NotNull @RequestHeader(value = "X-User-Id", required = true) Long xUserId, ServerWebExchange exchange) {
         return Mono.fromSupplier(() -> ResponseEntity.ok(new BalanceResponse(account.getBalance(xUserId))));
     }
 

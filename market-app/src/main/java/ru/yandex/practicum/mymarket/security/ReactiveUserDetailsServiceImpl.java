@@ -23,8 +23,7 @@ public class ReactiveUserDetailsServiceImpl implements ReactiveUserDetailsServic
     private final UserRepository userRepository;
     private final UserRoleRepository userRoleRepository;
 
-    public ReactiveUserDetailsServiceImpl(UserRepository userRepository,
-                                          UserRoleRepository userRoleRepository) {
+    public ReactiveUserDetailsServiceImpl(UserRepository userRepository, UserRoleRepository userRoleRepository) {
         this.userRepository = userRepository;
         this.userRoleRepository = userRoleRepository;
     }
@@ -33,8 +32,8 @@ public class ReactiveUserDetailsServiceImpl implements ReactiveUserDetailsServic
     public Mono<UserDetails> findByUsername(String username) {
         return userRepository
                 .findByUsername(username)
-                .switchIfEmpty(Mono.error(new UsernameNotFoundException(
-                        "Пользователь с логином " + username + " не найден")))
+                .switchIfEmpty(
+                        Mono.error(new UsernameNotFoundException("Пользователь с логином " + username + " не найден")))
                 .flatMap(user -> userRoleRepository
                         .findByUserId(user.getId())
                         .map(UserRole::getRole)

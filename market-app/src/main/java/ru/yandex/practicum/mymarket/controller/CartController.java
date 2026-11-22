@@ -7,10 +7,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.dto.CartView;
+import ru.yandex.practicum.mymarket.security.CurrentUserProvider;
 import ru.yandex.practicum.mymarket.service.Action;
 import ru.yandex.practicum.mymarket.service.CartPageService;
 import ru.yandex.practicum.mymarket.service.CartService;
-import ru.yandex.practicum.mymarket.security.CurrentUserProvider;
 
 /**
  * Корзина покупателя: отображение и изменение количества позиций.
@@ -24,15 +24,19 @@ public class CartController {
     private final CartPageService cartPageService;
     private final CurrentUserProvider currentUserProvider;
 
-    public CartController(CartService cartService, CartPageService cartPageService,
-                          CurrentUserProvider currentUserProvider) {
+    public CartController(
+            CartService cartService, CartPageService cartPageService, CurrentUserProvider currentUserProvider) {
         this.cartService = cartService;
         this.cartPageService = cartPageService;
         this.currentUserProvider = currentUserProvider;
     }
 
     /**
-     * Отдаёт страницу корзины текущего пользователя.
+     * Отдаёт страницу корзины.
+     *
+     * @param model модель представления
+     * @param paymentError код ошибки оплаты
+     * @return имя шаблона корзины
      */
     @GetMapping("/cart/items")
     public Mono<String> getCart(
@@ -44,7 +48,12 @@ public class CartController {
     }
 
     /**
-     * Изменяет количество или удаляет товар из корзины текущего пользователя.
+     * Изменяет товар в корзине.
+     *
+     * @param id идентификатор товара
+     * @param action действие
+     * @param model модель представления
+     * @return имя шаблона корзины
      */
     @PostMapping("/cart/items")
     public Mono<String> changeCartItem(@RequestParam long id, @RequestParam Action action, Model model) {

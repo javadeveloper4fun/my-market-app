@@ -114,7 +114,8 @@ class OrderRepositoryTest extends DatabaseResetTest {
         Order first = orderRepository.save(new Order(USER_ID)).block();
         Order second = orderRepository.save(new Order(USER_ID)).block();
 
-        List<Long> ids = orderRepository.findAllIdsByUserId(USER_ID).collectList().block();
+        List<Long> ids =
+                orderRepository.findAllIdsByUserId(USER_ID).collectList().block();
 
         assertThat(ids).containsExactly(second.getId(), first.getId());
     }
@@ -126,7 +127,8 @@ class OrderRepositoryTest extends DatabaseResetTest {
     void findsOrderWithoutItems() {
         Order order = orderRepository.save(new Order(USER_ID)).block();
 
-        assertThat(orderRepository.findByIdAndUserId(order.getId(), USER_ID).block()).isNotNull();
+        assertThat(orderRepository.findByIdAndUserId(order.getId(), USER_ID).block())
+                .isNotNull();
         assertThat(orderItemRepository
                         .findAllByOrderIdIn(List.of(order.getId()))
                         .collectList()

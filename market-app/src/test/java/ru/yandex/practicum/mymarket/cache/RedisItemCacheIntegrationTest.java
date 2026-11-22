@@ -37,16 +37,19 @@ class RedisItemCacheIntegrationTest extends AbstractRedisIntegrationTest {
     @Test
     void pageIsServedFromCacheUntilVersionChanges() {
         itemRepository.save(item("Первый", "100")).block();
-        assertThat(flatItems(itemService.getItems("", "NO", 1, 10, null).block())).hasSize(1);
+        assertThat(flatItems(itemService.getItems("", "NO", 1, 10, null).block()))
+                .hasSize(1);
 
         // Прямая запись в БД не инвалидирует кеш: страница должна остаться старой.
         itemRepository.save(item("Второй", "200")).block();
-        assertThat(flatItems(itemService.getItems("", "NO", 1, 10, null).block())).hasSize(1);
+        assertThat(flatItems(itemService.getItems("", "NO", 1, 10, null).block()))
+                .hasSize(1);
 
         // saveWithImage инвалидирует версию страниц, поэтому следующий запрос
         // читает уже три товара, а не закешированные один.
         itemService.saveWithImage("Третий", "Описание", 300, "new.jpg").block();
-        assertThat(flatItems(itemService.getItems("", "NO", 1, 10, null).block())).hasSize(3);
+        assertThat(flatItems(itemService.getItems("", "NO", 1, 10, null).block()))
+                .hasSize(3);
     }
 
     @Test

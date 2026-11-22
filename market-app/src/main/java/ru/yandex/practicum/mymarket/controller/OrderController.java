@@ -12,10 +12,10 @@ import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.payments.InsufficientFundsException;
 import ru.yandex.practicum.mymarket.payments.InvalidPaymentRequestException;
 import ru.yandex.practicum.mymarket.payments.PaymentsUnavailableException;
+import ru.yandex.practicum.mymarket.security.CurrentUserProvider;
 import ru.yandex.practicum.mymarket.service.CheckoutService;
 import ru.yandex.practicum.mymarket.service.EmptyCartException;
 import ru.yandex.practicum.mymarket.service.OrderService;
-import ru.yandex.practicum.mymarket.security.CurrentUserProvider;
 
 /**
  * Заказы покупателя: список заказов, карточка заказа и оформление.
@@ -32,43 +32,52 @@ public class OrderController {
     private final CheckoutService checkoutService;
     private final CurrentUserProvider currentUserProvider;
 
-    public OrderController(OrderService orderService, CheckoutService checkoutService,
-                           CurrentUserProvider currentUserProvider) {
+    public OrderController(
+            OrderService orderService, CheckoutService checkoutService, CurrentUserProvider currentUserProvider) {
         this.orderService = orderService;
         this.checkoutService = checkoutService;
         this.currentUserProvider = currentUserProvider;
     }
 
     /**
-     * Отдаёт страницу со списком заказов текущего пользователя.
+     * Отдаёт список заказов.
+     *
+     * @param model модель представления
+     * @return имя шаблона заказов
      */
     @GetMapping("/orders")
     public Mono<String> getOrders(Model model) {
         return currentUserProvider
                 .getCurrentUser()
-                .flatMap(user -> orderService.getOrders(user.getId())
-                        .doOnNext(orders -> model.addAttribute("orders", orders)))
+                .flatMap(user ->
+                        orderService.getOrders(user.getId()).doOnNext(orders -> model.addAttribute("orders", orders)))
                 .thenReturn("orders");
     }
 
     /**
-     * Отдаёт страницу совершённого заказа текущего пользователя.
+     * Отдаёт страницу заказа.
+     *
+     * @param id идентификатор заказа
+     * @param newOrder признак нового заказа
+     * @param model модель представления
+     * @return имя шаблона заказа
      */
     @GetMapping("/orders/{id}")
     public Mono<String> getOrder(
             @PathVariable long id, @RequestParam(defaultValue = "false") boolean newOrder, Model model) {
         return currentUserProvider
                 .getCurrentUser()
-                .flatMap(user -> orderService.getOrder(id, user.getId())
-                        .doOnNext(order -> {
-                            model.addAttribute("order", order);
-                            model.addAttribute("newOrder", newOrder);
-                        }))
+                .flatMap(user -> orderService.getOrder(id, user.getId()).doOnNext(order -> {
+                    model.addAttribute("order", order);
+                    model.addAttribute("newOrder", newOrder);
+                }))
                 .thenReturn("order");
     }
 
     /**
-     * Оформляет заказ из корзины текущего пользователя.
+     * Оформляет покупку.
+     *
+     * @return редирект на заказ или корзину
      */
     @PostMapping("/buy")
     public Mono<String> buy() {

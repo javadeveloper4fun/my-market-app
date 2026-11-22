@@ -53,7 +53,10 @@ class ImagesControllerTest extends DatabaseResetTest {
 
     @org.junit.jupiter.api.BeforeEach
     void setUpClient() {
-        client = WebTestClient.bindToApplicationContext(context).apply(springSecurity()).configureClient().build();
+        client = WebTestClient.bindToApplicationContext(context)
+                .apply(springSecurity())
+                .configureClient()
+                .build();
     }
 
     @MockitoBean
@@ -67,7 +70,9 @@ class ImagesControllerTest extends DatabaseResetTest {
     void uploadReturnsPathUsableAsImgPath() {
         when(imageStorageService.upload(any())).thenReturn(Mono.just("d1f0c4a2.jpg"));
 
-        client.mutateWith(mockUser("user").roles("USER")).mutateWith(csrf()).post()
+        client.mutateWith(mockUser("user").roles("USER"))
+                .mutateWith(csrf())
+                .post()
                 .uri("/images")
                 .contentType(MediaType.MULTIPART_FORM_DATA)
                 .body(BodyInserters.fromMultipartData(formWith("photo.jpg", "image/jpeg")))
@@ -186,7 +191,9 @@ class ImagesControllerTest extends DatabaseResetTest {
         when(imageStorageService.upload(any()))
                 .thenReturn(Mono.error(new ImageUploadException("Недопустимый формат изображения.")));
 
-        client.mutateWith(mockUser("user").roles("USER")).mutateWith(csrf()).post()
+        client.mutateWith(mockUser("user").roles("USER"))
+                .mutateWith(csrf())
+                .post()
                 .uri("/images")
                 .contentType(MediaType.MULTIPART_FORM_DATA)
                 .body(BodyInserters.fromMultipartData(formWith("doc.pdf", "application/pdf")))

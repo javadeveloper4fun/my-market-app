@@ -1,10 +1,9 @@
 package ru.yandex.practicum.mymarket.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.csrf;
 import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.mockUser;
@@ -13,16 +12,16 @@ import java.net.URI;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.webflux.test.autoconfigure.WebFluxTest;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.web.server.SecurityWebFilterChain;
-import org.thymeleaf.extras.springsecurity6.dialect.SpringSecurityDialect;
-import org.springframework.boot.webflux.test.autoconfigure.WebFluxTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.reactive.server.WebTestClient;
+import org.thymeleaf.extras.springsecurity6.dialect.SpringSecurityDialect;
 import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.ItemsPage;
@@ -100,7 +99,8 @@ class ItemsControllerTest {
     void getItemsPassesRequestParamsToService() {
         ItemDto dto = new ItemDto(1L, "Куртка", "Описание", "images/jacket.jpg", 4500L, 0);
         ItemsPage page = ItemsPage.of(List.of(dto), "куртка", "ALPHA", new Paging(5, 1, false, false));
-        when(itemService.getItems(eq("куртка"), eq("ALPHA"), eq(1), eq(5), any())).thenReturn(Mono.just(page));
+        when(itemService.getItems(eq("куртка"), eq("ALPHA"), eq(1), eq(5), any()))
+                .thenReturn(Mono.just(page));
 
         authed().get()
                 .uri(URI.create(
@@ -202,7 +202,7 @@ class ItemsControllerTest {
         authed().get().uri("/items/abc").exchange().expectStatus().isBadRequest();
     }
 
-@TestConfiguration
+    @TestConfiguration
     @EnableWebFluxSecurity
     static class TestSecurityConfig {
         @Bean
@@ -213,10 +213,11 @@ class ItemsControllerTest {
         @Bean
         SecurityWebFilterChain testChain() {
             ServerHttpSecurity http = ServerHttpSecurity.http();
-            return http
-                .csrf(csrf -> csrf.csrfTokenRepository(org.springframework.security.web.server.csrf.CookieServerCsrfTokenRepository.withHttpOnlyFalse()))
-                .authorizeExchange(ex -> ex.anyExchange().permitAll())
-                .build();
+            return http.csrf(
+                            csrf -> csrf.csrfTokenRepository(org.springframework.security.web.server.csrf
+                                    .CookieServerCsrfTokenRepository.withHttpOnlyFalse()))
+                    .authorizeExchange(ex -> ex.anyExchange().permitAll())
+                    .build();
         }
     }
 }

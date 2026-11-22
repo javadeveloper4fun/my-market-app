@@ -12,10 +12,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.dto.CartPage;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
-import ru.yandex.practicum.mymarket.payments.PaymentsGateway;
-import ru.yandex.practicum.mymarket.security.CurrentUserProvider;
 import ru.yandex.practicum.mymarket.model.User;
+import ru.yandex.practicum.mymarket.payments.PaymentsGateway;
 import ru.yandex.practicum.mymarket.payments.PaymentsUnavailableException;
+import ru.yandex.practicum.mymarket.security.CurrentUserProvider;
 
 /**
  * Тесты сборки страницы корзины: баланс, доступность кнопки и сообщения.
