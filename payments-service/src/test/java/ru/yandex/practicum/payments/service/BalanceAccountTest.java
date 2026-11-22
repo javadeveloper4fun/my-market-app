@@ -98,8 +98,8 @@ class BalanceAccountTest {
     void throwsOnNonPositiveAmount() {
         BalanceAccount account = new BalanceAccount(new PaymentsProperties(1000L));
 
-        assertThatThrownBy(() -> account.withdraw(0)).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> account.withdraw(-1)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> account.withdraw(0)).isInstanceOf(InvalidAmountException.class);
+        assertThatThrownBy(() -> account.withdraw(-1)).isInstanceOf(InvalidAmountException.class);
     }
 
     @Test

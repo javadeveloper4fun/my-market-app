@@ -10,14 +10,22 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 import ru.yandex.practicum.payments.service.BalanceAccount;
 
 /**
- * Тесты HTTP-контракта сервиса платежей.
+ * Единственный интеграционный набор тестов HTTP-контракта сервиса платежей.
+ *
+ * <p>Используется {@code RANDOM_PORT}, чтобы запросы проходили через реальный
+ * HTTP-стек Netty (маршалинг контроллера, заголовки, обработка входного JSON на уровне
+ * сервера), а Spring-контекст поднимался один раз на весь набор. Ещё один
+ * {@code @SpringBootTest}-класс с другим {@code webEnvironment} или без явного
+ * порта дал бы второй контекст и удвоил стоимость запуска.
  *
  * <p>Баланс хранится в памяти и меняется при списании, поэтому перед каждым
- * тестом он сбрасывается через {@link BalanceAccount#reset()}. Контекст при
- * этом переиспользуется: пересоздание контекста после каждого теста ради
- * сброса одного поля — лишняя плата за старт приложения.
+ * тестом он сбрасывается через {@link BalanceAccount#reset()}. Размер не должен
+ * зависеть от порядка выполнения. Начальный баланс зафиксирован явно в
+ * свойствах теста, чтобы проверки не зависели от {@code application.yml}.
  */
-@SpringBootTest
+@SpringBootTest(
+        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "payments.initial-balance=10000")
 @AutoConfigureWebTestClient
 class PaymentsControllerTest {
 
@@ -39,6 +47,8 @@ class PaymentsControllerTest {
                 .exchange()
                 .expectStatus()
                 .isOk()
+                .expectHeader()
+                .contentTypeCompatibleWith(MediaType.APPLICATION_JSON)
                 .expectBody()
                 .jsonPath("$.balance")
                 .isEqualTo(10_000);
@@ -56,6 +66,15 @@ class PaymentsControllerTest {
                 .expectBody()
                 .jsonPath("$.amount")
                 .isEqualTo(1500)
+                .jsonPath("$.balance")
+                .isEqualTo(8500);
+
+        client.get()
+                .uri("/api/v1/balance")
+                .exchange()
+                .expectStatus()
+                .isOk()
+                .expectBody()
                 .jsonPath("$.balance")
                 .isEqualTo(8500);
     }

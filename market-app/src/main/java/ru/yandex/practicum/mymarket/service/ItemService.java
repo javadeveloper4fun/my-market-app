@@ -18,6 +18,7 @@ import ru.yandex.practicum.mymarket.dto.InvalidItemFormException;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.ItemsPage;
 import ru.yandex.practicum.mymarket.dto.Paging;
+import ru.yandex.practicum.mymarket.dto.PagingLimits;
 import ru.yandex.practicum.mymarket.model.CartItem;
 import ru.yandex.practicum.mymarket.model.Item;
 import ru.yandex.practicum.mymarket.repository.CartItemRepository;
@@ -100,7 +101,7 @@ public class ItemService {
                     default -> "NO";
                 };
         int pageIndex = Math.max(pageNumber - 1, 0);
-        int pageLimit = Math.min(Math.max(pageSize, 1), 100);
+        int pageLimit = Math.min(Math.max(pageSize, 1), PagingLimits.MAX_PAGE_SIZE);
         long offset = (long) pageIndex * pageLimit;
         // В модель идёт нормализованный номер, а не присланный. При pageNumber = 0
         // смещение считается верно, но шаблон показал бы страницу 0 и «вперёд»

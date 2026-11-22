@@ -12,7 +12,6 @@ import ru.yandex.practicum.payments.model.BalanceResponse;
 import ru.yandex.practicum.payments.model.PaymentRequest;
 import ru.yandex.practicum.payments.model.PaymentResponse;
 import ru.yandex.practicum.payments.service.BalanceAccount;
-import ru.yandex.practicum.payments.service.InvalidAmountException;
 
 /**
  * Обработчик платёжных эндпоинтов.
@@ -38,13 +37,10 @@ public class PaymentsController implements BalanceApi, PaymentsApi {
     @Override
     public Mono<ResponseEntity<PaymentResponse>> createPayment(
             @Valid @RequestBody Mono<PaymentRequest> paymentRequest, ServerWebExchange exchange) {
-        return paymentRequest.flatMap(request -> {
-            Long amount = request.getAmount();
-            if (amount == null || amount <= 0) {
-                return Mono.error(new InvalidAmountException());
-            }
+        return paymentRequest.map(request -> {
+            long amount = request.getAmount();
             long remaining = account.withdraw(amount);
-            return Mono.just(ResponseEntity.ok(new PaymentResponse(amount, remaining)));
+            return ResponseEntity.ok(new PaymentResponse(amount, remaining));
         });
     }
 }
