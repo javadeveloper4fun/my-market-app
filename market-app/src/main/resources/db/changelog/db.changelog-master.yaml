@@ -39,3 +39,7 @@ databaseChangeLog:
       file: db/changelog/changes/007-add-index.yaml
   - include:
       file: db/changelog/changes/008-align-items-sequence.yaml
+  - include:
+      file: db/changelog/changes/009-init-users.yaml
+  - include:
+      file: db/changelog/changes/010-seed-users.yaml
