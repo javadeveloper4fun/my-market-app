@@ -10,6 +10,7 @@ import org.springframework.web.bind.support.WebExchangeBindException;
 import org.springframework.web.server.ServerWebInputException;
 import ru.yandex.practicum.mymarket.dto.InvalidItemFormException;
 import ru.yandex.practicum.mymarket.service.ImageUploadException;
+import ru.yandex.practicum.mymarket.service.UserNotAuthenticatedException;
 
 /**
  * Обработка исключений веб-слоя витрины.
@@ -66,14 +67,26 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * Возвращает 400 с текстом причины, если изображение товара не принято.
+     * Возвращает 400 с текстом причины, если загруженное изображение не принято.
      *
-     * @param e ошибка загрузки или проверки изображения
+     * @param e ошибка загрузки или валидации изображения
      * @return ответ со статусом 400 и текстом причины
      */
     @ExceptionHandler(ImageUploadException.class)
     public ResponseEntity<String> handleImageUpload(ImageUploadException e) {
         LOG.warn("Изображение товара не принято: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+    }
+
+    /**
+     * Возвращает 401, если действие требует аутентифицированного пользователя.
+     *
+     * @param e ошибка отсутствия аутентификации
+     * @return ответ со статусом 401
+     */
+    @ExceptionHandler(UserNotAuthenticatedException.class)
+    public ResponseEntity<Void> handleUserNotAuthenticated(UserNotAuthenticatedException e) {
+        LOG.warn("Требуется аутентификация: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
     }
 }

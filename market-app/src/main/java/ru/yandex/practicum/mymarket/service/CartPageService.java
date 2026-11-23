@@ -27,7 +27,7 @@ public class CartPageService {
     public Mono<CartView> getCartView() {
         return currentUserProvider
                 .getCurrentUser()
-                .switchIfEmpty(Mono.error(new EmptyCartException("User is not authenticated")))
+                .switchIfEmpty(Mono.error(new UserNotAuthenticatedException()))
                 .flatMap(user -> cartService
                         .getCart(user.getId())
                         .flatMap(cart -> paymentsGateway

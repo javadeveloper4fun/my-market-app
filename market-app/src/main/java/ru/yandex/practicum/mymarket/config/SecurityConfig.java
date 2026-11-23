@@ -36,12 +36,6 @@ public class SecurityConfig {
     }
 
     /**
-     * Цепочка фильтров безопасности WebFlux.
-     *
-     * @param userDetailsService загрузка пользователей из БД
-     * @return настроенная {@link SecurityWebFilterChain}
-     */
-    /**
      * Обработчик успешного logout.
      *
      * @return обработчик редиректа
@@ -68,8 +62,6 @@ public class SecurityConfig {
                         .pathMatchers(HttpMethod.GET, "/", "/items", "/items/*", "/login", "/error")
                         .permitAll()
                         .pathMatchers(HttpMethod.GET, "/items/new")
-                        .authenticated()
-                        .pathMatchers(HttpMethod.POST, "/items/new")
                         .authenticated()
                         .pathMatchers(HttpMethod.POST, "/items", "/items/*", "/images")
                         .authenticated()

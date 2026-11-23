@@ -27,7 +27,7 @@ public class CheckoutService {
     public Mono<Long> checkout() {
         return currentUserProvider
                 .getCurrentUser()
-                .switchIfEmpty(Mono.error(new EmptyCartException("User is not authenticated")))
+                .switchIfEmpty(Mono.error(new UserNotAuthenticatedException()))
                 .flatMap(user -> orderService
                         .prepareOrder(user.getId())
                         .flatMap(prepared -> paymentsGateway
