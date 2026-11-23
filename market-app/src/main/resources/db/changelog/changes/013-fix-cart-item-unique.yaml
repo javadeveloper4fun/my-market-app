@@ -1,0 +1,43 @@
+# ===================================================================
+# Исправление уникальности корзины для multi-user (спринт 8).
+#
+# В 002-init-cart-item.yaml item_id был UNIQUE (single-user корзина).
+# В 011 добавлен user_id, но уникальность не изменена: второй пользователь
+# не может добавить тот же товар, потому что item_id уже занят.
+# Нужна уникальность пары (item_id, user_id).
+# ===================================================================
+
+databaseChangeLog:
+
+  - changeSet:
+      id: "17"
+      author: "student"
+      comment: "Заменить UNIQUE(item_id) на UNIQUE(item_id, user_id) в cart_item"
+      changes:
+        - sql:
+            dbms: h2
+            sql: |
+              ALTER TABLE cart_item DROP CONSTRAINT IF EXISTS FK_CART_ITEM_ITEM;
+              ALTER TABLE cart_item DROP CONSTRAINT IF EXISTS CONSTRAINT_FC;
+              ALTER TABLE cart_item DROP CONSTRAINT IF EXISTS UQ_CART_ITEM_ITEM;
+              DROP INDEX IF EXISTS UQ_CART_ITEM_ITEM_INDEX_B;
+              DROP INDEX IF EXISTS UQ_CART_ITEM_ITEM_INDEX_C;
+              DROP INDEX IF EXISTS UQ_CART_ITEM_ITEM_INDEX_D;
+              ALTER TABLE cart_item ADD CONSTRAINT fk_cart_item_item FOREIGN KEY (item_id) REFERENCES items(id);
+        - sql:
+            dbms: postgresql
+            sql: |
+              ALTER TABLE cart_item DROP CONSTRAINT IF EXISTS uq_cart_item_item;
+              DROP INDEX IF EXISTS uq_cart_item_item;
+        - addUniqueConstraint:
+            tableName: cart_item
+            columnNames: item_id, user_id
+            constraintName: uq_cart_item_item_user
+      rollback:
+        - dropUniqueConstraint:
+            tableName: cart_item
+            constraintName: uq_cart_item_item_user
+        - addUniqueConstraint:
+            tableName: cart_item
+            columnNames: item_id
+            constraintName: uq_cart_item_item

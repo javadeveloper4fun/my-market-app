@@ -100,6 +100,27 @@ class SecurityIntegrationTest extends DatabaseResetTest {
     }
 
     @Test
+    void anonymousCannotMutateItems() {
+        client.mutateWith(csrf())
+                .post()
+                .uri("/items?id=1&action=PLUS&search=&sort=NO&pageNumber=1&pageSize=5")
+                .exchange()
+                .expectStatus()
+                .is3xxRedirection()
+                .expectHeader()
+                .value("Location", l -> assertThat(l).contains("/login"));
+
+        client.mutateWith(csrf())
+                .post()
+                .uri("/items/1?action=PLUS")
+                .exchange()
+                .expectStatus()
+                .is3xxRedirection()
+                .expectHeader()
+                .value("Location", l -> assertThat(l).contains("/login"));
+    }
+
+    @Test
     void postWithoutCsrfIsForbiddenForAuthenticatedUser() {
         Item item = itemRepository
                 .save(new Item("Куртка", "d", "img.jpg", new BigDecimal("100")))

@@ -47,3 +47,5 @@ databaseChangeLog:
       file: db/changelog/changes/011-add-user-id-to-cart-order.yaml
   - include:
       file: db/changelog/changes/012-add-user-id-indexes.yaml
+  - include:
+      file: db/changelog/changes/013-fix-cart-item-unique.yaml
