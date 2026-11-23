@@ -81,8 +81,10 @@ class CartServiceTest extends DatabaseResetTest {
         cartService.applyAction(item.getId(), Action.PLUS, 1L).block();
         cartService.applyAction(item.getId(), Action.PLUS, 2L).block();
 
-        CartItem first = cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block();
-        CartItem second = cartItemRepository.findByItemIdAndUserId(item.getId(), 2L).block();
+        CartItem first =
+                cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block();
+        CartItem second =
+                cartItemRepository.findByItemIdAndUserId(item.getId(), 2L).block();
         assertThat(first).isNotNull();
         assertThat(second).isNotNull();
         assertThat(first.getCount()).isEqualTo(1);

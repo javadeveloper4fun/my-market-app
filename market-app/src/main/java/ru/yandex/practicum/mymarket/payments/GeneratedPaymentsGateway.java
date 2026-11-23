@@ -68,6 +68,11 @@ public class GeneratedPaymentsGateway implements PaymentsGateway {
             if (responseException.getStatusCode() == HttpStatus.PAYMENT_REQUIRED) {
                 return new InsufficientFundsException();
             }
+            if (responseException.getStatusCode() == HttpStatus.UNAUTHORIZED
+                    || responseException.getStatusCode() == HttpStatus.FORBIDDEN) {
+                LOG.warn("Payments service returned status {}", responseException.getStatusCode());
+                return new PaymentsUnavailableException("Сервис платежей временно недоступен", responseException);
+            }
             if (responseException.getStatusCode().is4xxClientError()) {
                 return new InvalidPaymentRequestException("Сервис платежей отклонил запрос оплаты");
             }

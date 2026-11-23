@@ -12,7 +12,9 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import ru.yandex.practicum.payments.service.BalanceAccount;
 
-@SpringBootTest
+@SpringBootTest(
+        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "payments.initial-balance=10000")
 class PaymentsServiceIntegrationTest {
 
     @Autowired
