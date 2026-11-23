@@ -18,16 +18,16 @@
                         <span class="badge text-bg-success">Витрина магазина</span>
                     </h2>
                     <a href="/cart/items" class="btn btn-secondary bi bi-cart4 ms-auto"
-                       sec:authorize="isAuthenticated()">Корзина</a>
+                       th:if="${isAuthenticated}">Корзина</a>
                     <a href="/items" class="btn btn-secondary bi bi-arrow-left-square"> Главная</a>
                     <a href="/login" class="btn btn-outline-primary ms-auto"
-                       sec:authorize="isAnonymous()">Войти</a>
+                       th:unless="${isAuthenticated}">Войти</a>
                     <form method="post" action="/logout" class="d-inline no-ajax"
-                          sec:authorize="isAuthenticated()">
+                          th:if="${isAuthenticated}">
                         <input type="hidden" name="_csrf" th:value="${_csrf.token}"/>
                         <button type="submit" class="btn btn-outline-danger">Выйти</button>
                     </form>
-                    <div sec:authorize="isAnonymous()" class="text-danger ms-auto">
+                    <div th:unless="${isAuthenticated}" class="text-danger ms-auto">
                         Заказы доступны только после входа.
                     </div>
                 </div>
