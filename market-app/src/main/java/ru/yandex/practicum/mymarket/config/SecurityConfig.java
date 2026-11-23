@@ -3,13 +3,15 @@ package ru.yandex.practicum.mymarket.config;
 import java.net.URI;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.security.web.server.authentication.logout.RedirectServerLogoutSuccessHandler;
-import ru.yandex.practicum.mymarket.security.ReactiveUserDetailsServiceImpl;
+import org.springframework.security.web.server.csrf.CookieServerCsrfTokenRepository;
 
 /**
  * Конфигурация Spring Security для market-app (WebFlux + Thymeleaf).
@@ -55,45 +57,30 @@ public class SecurityConfig {
      * Цепочка фильтров безопасности.
      *
      * @param http конфигурация HTTP security
-     * @param userDetailsService сервис загрузки пользователя
      * @return цепочка фильтров
      */
     @Bean
-    public SecurityWebFilterChain springSecurityFilterChain(
-            ServerHttpSecurity http, ReactiveUserDetailsServiceImpl userDetailsService) {
-        http
-                // CSRF нужен для небезопасных методов (POST), изменяющих состояние (корзина, оформление заказа).
-                // Токен CSRF передаётся в Thymeleaf-формах через hidden-поле.
-                .csrf(csrf -> csrf.csrfTokenRepository(
-                        new org.springframework.security.web.server.csrf.CookieServerCsrfTokenRepository()))
+    public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
+        http.csrf(csrf -> csrf.csrfTokenRepository(CookieServerCsrfTokenRepository.withHttpOnlyFalse()))
                 .authorizeExchange(exchanges -> exchanges
-                        // Публичное действие витрины: создание товара только для авторизованного пользователя.
-                        .pathMatchers("/items/new")
-                        .authenticated()
-                        // Публичные страницы: витрина, карточка товара, статика, логин, ошибка.
-                        .pathMatchers(
-                                "/",
-                                "/items",
-                                "/items/*",
-                                "/images/**",
-                                "/css/**",
-                                "/js/**",
-                                "/webjars/**",
-                                "/login",
-                                "/error")
+                        .pathMatchers(HttpMethod.GET, "/images/**", "/css/**", "/js/**", "/webjars/**")
                         .permitAll()
-                        // Закрытые зоны: только для аутентифицированных пользователей.
+                        .pathMatchers(HttpMethod.GET, "/", "/items", "/items/*", "/login", "/error")
+                        .permitAll()
+                        .pathMatchers(HttpMethod.GET, "/items/new")
+                        .authenticated()
+                        .pathMatchers(HttpMethod.POST, "/items/new")
+                        .authenticated()
+                        .pathMatchers(HttpMethod.POST, "/items", "/items/*", "/images")
+                        .authenticated()
                         .pathMatchers("/cart/**", "/orders/**", "/buy")
                         .authenticated()
                         .anyExchange()
                         .authenticated())
-                // Стандартная форма логина Spring Security.
                 .formLogin(form -> form.loginPage("/login"))
-                // Выход: очистка WebSession, куки и SecurityContext, редирект на главную.
                 .logout(logout ->
                         logout.logoutUrl("/logout").logoutSuccessHandler(redirectServerLogoutSuccessHandler()))
-                // OAuth2 Client для получения токена по клиентским credentials для payments-service.
-                .oauth2Client(org.springframework.security.config.Customizer.withDefaults());
+                .oauth2Client(Customizer.withDefaults());
 
         return http.build();
     }

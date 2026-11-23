@@ -70,6 +70,26 @@ class CartServiceTest extends DatabaseResetTest {
     }
 
     @Test
+    void differentUsersCanHaveSameItemInCart() {
+        Item item = saveItem("Common item", "d", "500");
+        databaseClient
+                .sql("MERGE INTO users (id, username, password_hash, enabled, created_at) "
+                        + "KEY(id) VALUES (2, 'test2', '{noop}p', true, CURRENT_TIMESTAMP)")
+                .then()
+                .block();
+
+        cartService.applyAction(item.getId(), Action.PLUS, 1L).block();
+        cartService.applyAction(item.getId(), Action.PLUS, 2L).block();
+
+        CartItem first = cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block();
+        CartItem second = cartItemRepository.findByItemIdAndUserId(item.getId(), 2L).block();
+        assertThat(first).isNotNull();
+        assertThat(second).isNotNull();
+        assertThat(first.getCount()).isEqualTo(1);
+        assertThat(second.getCount()).isEqualTo(1);
+    }
+
+    @Test
     void getCartEmptyReturnsZeroTotal() {
         CartPage cart = cartService.getCart(1L).block();
 
