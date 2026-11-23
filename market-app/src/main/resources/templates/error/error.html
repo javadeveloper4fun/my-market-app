@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<html lang="en" xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
 
 <head>
     <meta charset="utf-8">
@@ -16,9 +17,18 @@
                     <h2>
                         <span class="badge text-bg-success">Витрина магазина</span>
                     </h2>
-                    <a href="/orders" class="btn btn-secondary ms-auto bi bi-file-earmark-text"> Заказы</a>
-                    <a href="/cart/items" class="btn btn-secondary bi bi-cart4"> Корзина</a>
-                    <a href="/items" class="btn btn-secondary bi bi-arrow-left-square"> Главная</a>
+                    <a href="/orders" class="btn btn-secondary ms-auto bi bi-file-earmark-text"
+                       th:if="${isAuthenticated}"> Заказы</a>
+                    <a href="/cart/items" class="btn btn-secondary bi bi-cart4"
+                       th:if="${isAuthenticated}"> Корзина</a>
+                    <a href="/items" class="btn btn-secondary bi bi-arrow-left-square"> На главную</a>
+                    <a href="/login" class="btn btn-outline-primary"
+                       th:unless="${isAuthenticated}">Войти</a>
+                    <form method="post" action="/logout" class="d-inline no-ajax"
+                          th:if="${isAuthenticated}">
+                        <input type="hidden" name="_csrf" th:value="${_csrf.token}"/>
+                        <button type="submit" class="btn btn-outline-danger">Выйти</button>
+                    </form>
                 </div>
             </div>
         </div>
