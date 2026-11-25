@@ -90,8 +90,10 @@ public class ItemsController {
     @PostMapping("/items/new")
     public Mono<String> createItem(
             @ModelAttribute NewItemForm form, @RequestPart("image") FilePart image, Model model) {
-        return Mono.fromRunnable(form::validate)
-                .then(itemService.createItem(form.getTitle(), form.getDescription(), form.getPrice(), image))
+        return Mono.defer(() -> {
+                    form.validate();
+                    return itemService.createItem(form.getTitle(), form.getDescription(), form.getPrice(), image);
+                })
                 .thenReturn("redirect:/items")
                 .onErrorResume(InvalidItemFormException.class, e -> renderNewItemForm(form, e.getMessage(), model))
                 .onErrorResume(ImageUploadException.class, e -> renderNewItemForm(form, e.getMessage(), model));
