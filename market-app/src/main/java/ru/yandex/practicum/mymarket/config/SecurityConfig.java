@@ -59,10 +59,12 @@ public class SecurityConfig {
                 .authorizeExchange(exchanges -> exchanges
                         .pathMatchers(HttpMethod.GET, "/images/**", "/css/**", "/js/**", "/webjars/**")
                         .permitAll()
-                        .pathMatchers(HttpMethod.GET, "/", "/items", "/items/*", "/login", "/error")
-                        .permitAll()
+                        // Точное правило /items/new обязано идти до общего /items/*:
+                        // проверка идёт по порядку, и иначе аноним откроет форму добавления товара.
                         .pathMatchers(HttpMethod.GET, "/items/new")
                         .authenticated()
+                        .pathMatchers(HttpMethod.GET, "/", "/items", "/items/*", "/login", "/error")
+                        .permitAll()
                         .pathMatchers(HttpMethod.POST, "/items", "/items/*", "/images")
                         .authenticated()
                         .pathMatchers("/cart/**", "/orders/**", "/buy")

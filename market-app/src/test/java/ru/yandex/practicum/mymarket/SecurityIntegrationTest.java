@@ -14,7 +14,6 @@ import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTest
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
-import org.springframework.r2dbc.core.DatabaseClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import ru.yandex.practicum.mymarket.model.CartItem;
@@ -50,9 +49,6 @@ class SecurityIntegrationTest extends DatabaseResetTest {
     @Autowired
     private UserRepository userRepository;
 
-    @Autowired
-    private DatabaseClient databaseClient;
-
     @BeforeEach
     void setUp() {
         client = WebTestClient.bindToApplicationContext(context)
@@ -67,6 +63,56 @@ class SecurityIntegrationTest extends DatabaseResetTest {
     void anonymousCanAccessPublicPages() {
         client.get().uri("/items").exchange().expectStatus().isOk();
         client.get().uri("/login").exchange().expectStatus().isOk();
+    }
+
+    @Test
+    void anonymousCannotAccessNewItemForm() {
+        client.get()
+                .uri("/items/new")
+                .exchange()
+                .expectStatus()
+                .is3xxRedirection()
+                .expectHeader()
+                .value("Location", l -> assertThat(l).contains("/login"));
+    }
+
+    @Test
+    void authenticatedUserCanAccessNewItemForm() {
+        client.mutateWith(mockUser("user1").roles("USER"))
+                .get()
+                .uri("/items/new")
+                .exchange()
+                .expectStatus()
+                .isOk()
+                .expectBody(String.class)
+                .value(html -> assertThat(html).contains("new-item-form"));
+    }
+
+    @Test
+    void anonymousCanOpenItemCard() {
+        Item item = itemRepository
+                .save(new Item("Куртка", "d", "img.jpg", new BigDecimal("100")))
+                .block();
+
+        client.get()
+                .uri("/items/" + item.getId())
+                .exchange()
+                .expectStatus()
+                .isOk()
+                .expectBody(String.class)
+                .value(html -> assertThat(html).contains("Куртка"));
+    }
+
+    @Test
+    void anonymousCannotSubmitNewItemForm() {
+        client.mutateWith(csrf())
+                .post()
+                .uri("/items/new")
+                .exchange()
+                .expectStatus()
+                .is3xxRedirection()
+                .expectHeader()
+                .value("Location", l -> assertThat(l).contains("/login"));
     }
 
     @Test
