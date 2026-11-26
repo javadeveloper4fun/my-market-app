@@ -99,7 +99,12 @@ public class ImageStorageService {
      */
     @PostConstruct
     private void validateMaxUploadSize() {
-        parseSize(properties.getMaxUploadSize());
+        try {
+            parseSize(properties.getMaxUploadSize());
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalStateException(
+                    "Некорректная настройка market.image-s3.max-upload-size: " + properties.getMaxUploadSize(), ex);
+        }
     }
 
     /**
@@ -256,27 +261,49 @@ public class ImageStorageService {
     }
 
     /**
-     * Проверяет размер картинки до чтения содержимого.
+     * Возвращает фактический лимит размера изображения в байтах.
      *
-     * <p>Проверка своя, а не только настройкой сервера отправки. Каркас
-     * отсекает слишком большой файл сам и отвечает ошибкой разбора запроса, а
-     * здесь можно отказать понятным текстом: пользователь узнает, что именно
-     * превышено, а не получит ошибку без указания причины.
+     * @return лимит в байтах
+     */
+    long maxUploadSizeBytes() {
+        return parseSize(properties.getMaxUploadSize());
+    }
+
+    /**
+     * Проверяет размер картинки по заголовку {@code Content-Length}, если он указан.
      *
-     * <p>Если размер в заголовках неизвестен, проверка пропускается: это обычно
-     * означает потоковую отправку, и длина вычисляется по мере чтения.
+     * <p>Заголовок может отсутствовать или быть заниженным, поэтому эта проверка
+     * только быстрый отказ до чтения. Фактический размер контролируется при чтении
+     * содержимого в {@link #readBytes(FilePart)}.
      *
      * @param image часть запроса с файлом
      * @return завершение проверки
      */
     private Mono<Void> checkSize(FilePart image) {
         Long declaredLength = image.headers().getContentLength();
-        long limit = parseSize(properties.getMaxUploadSize());
+        long limit = maxUploadSizeBytes();
         if (declaredLength != null && declaredLength > limit) {
-            return Mono.error(
-                    new ImageUploadException("Файл слишком большой: допустимо до " + (limit / 1024 / 1024) + " МБ"));
+            return Mono.error(tooLarge(limit));
         }
         return Mono.empty();
+    }
+
+    private ImageUploadException tooLarge(long limit) {
+        return new ImageUploadException(
+                "Изображение слишком большое. Максимальный размер — " + formatSize(limit));
+    }
+
+    private String formatSize(long bytes) {
+        if (bytes % (1024L * 1024L * 1024L) == 0) {
+            return (bytes / (1024L * 1024L * 1024L)) + " ГБ";
+        }
+        if (bytes % (1024L * 1024L) == 0) {
+            return (bytes / (1024L * 1024L)) + " МБ";
+        }
+        if (bytes % 1024L == 0) {
+            return (bytes / 1024L) + " КБ";
+        }
+        return bytes + " Б";
     }
 
     /**
@@ -292,48 +319,43 @@ public class ImageStorageService {
      *
      * @param size размер с суффиксом единицы
      * @return размер в байтах
-     * @throws ImageUploadException если формат размера некорректен
+     * @throws IllegalArgumentException если формат размера некорректен
      */
     private long parseSize(String size) {
         if (size == null || size.isBlank()) {
             return 1024L * 1024L;
         }
         String trimmed = size.trim().toUpperCase(Locale.ROOT);
-        if (trimmed.contains(".") || trimmed.contains(",")) {
-            throw new ImageUploadException("Неподдерживаемый формат размера: '" + size
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("^(\\d+)\\s*(KB|MB|GB)$").matcher(trimmed);
+        if (!matcher.matches()) {
+            throw new IllegalArgumentException("Неподдерживаемый формат размера: '" + size
                     + "'. Ожидается целое число с суффиксом (например, 5MB, 10KB, 2GB).");
         }
+        long value = Long.parseLong(matcher.group(1));
         long multiplier =
-                switch (trimmed.substring(Math.max(0, trimmed.length() - 2))) {
+                switch (matcher.group(2)) {
                     case "KB" -> 1024L;
                     case "MB" -> 1024L * 1024L;
                     case "GB" -> 1024L * 1024L * 1024L;
-                    default ->
-                        throw new ImageUploadException(
-                                "Неподдерживаемый суффикс размера: '" + size + "'. Ожидается KB, MB или GB.");
+                    default -> throw new IllegalArgumentException(
+                            "Неподдерживаемый суффикс размера: '" + size + "'. Ожидается KB, MB или GB.");
                 };
-        String digits = trimmed.replaceAll("[^0-9]", "");
-        if (digits.isEmpty()) {
-            throw new ImageUploadException("Неподдерживаемый формат размера: '" + size
-                    + "'. Ожидается целое число с суффиксом (например, 5MB, 10KB, 2GB).");
-        }
-        return Long.parseLong(digits) * multiplier;
+        return value * multiplier;
     }
 
     /**
-     * Читает содержимое части запроса целиком.
+     * Читает содержимое части запроса целиком, но не более настроенного лимита.
      *
-     * <p>Содержимое приходит потоком буферов и для загрузки собирается в один
-     * массив: блочный {@code RequestBody} не умеет отдавать тело частями, а
-     * асинхронный потребовал бы удерживать части открытыми всё время передачи.
-     * Размер ограничен настройкой {@code spring.webflux.multipart.max-in-memory-size},
-     * поэтому собирать в память здесь безопасно.
+     * <p>Проверка идёт по фактически прочитанным байтам, поэтому срабатывает и при
+     * отсутствии {@code Content-Length}, и при заниженном заголовке.
      *
      * @param image часть запроса с файлом
      * @return содержимое файла
      */
-    private Mono<byte[]> readBytes(FilePart image) {
-        return DataBufferUtils.join(image.content())
+    Mono<byte[]> readBytes(FilePart image) {
+        long limit = maxUploadSizeBytes();
+        int maxByteCount = limit > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) limit;
+        return DataBufferUtils.join(image.content(), maxByteCount)
                 .map(buffer -> {
                     try {
                         byte[] bytes = new byte[buffer.readableByteCount()];
@@ -343,10 +365,7 @@ public class ImageStorageService {
                         DataBufferUtils.release(buffer);
                     }
                 })
-                .onErrorResume(
-                        DataBufferLimitException.class,
-                        ex -> Mono.error(
-                                new ImageUploadException("Файл слишком большой: превышен лимит буфера кодеков")))
+                .onErrorResume(DataBufferLimitException.class, ex -> Mono.error(tooLarge(limit)))
                 .onErrorResume(
                         IllegalArgumentException.class, ex -> Mono.error(new ImageUploadException(ex.getMessage())));
     }

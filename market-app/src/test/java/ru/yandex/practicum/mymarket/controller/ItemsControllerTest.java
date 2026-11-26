@@ -314,7 +314,8 @@ class ItemsControllerTest {
      */
     @Test
     void postNewItemTrimsFieldsBeforeCreation() {
-        when(itemService.createItem(any(), any(), anyLong(), any())).thenReturn(Mono.empty());
+        when(itemService.createItem(any(), any(), anyLong(), any()))
+                .thenReturn(Mono.just(new ItemDto(1L, "Куртка", "Теплая куртка", "images/jacket.jpg", 100L, 0)));
 
         MultipartBodyBuilder builder = new MultipartBodyBuilder();
         builder.part("image", new byte[] {1}).filename("image.jpg").contentType(MediaType.IMAGE_JPEG);
