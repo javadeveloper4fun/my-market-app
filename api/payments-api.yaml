@@ -44,6 +44,7 @@ paths:
       summary: Списать сумму покупки
       parameters:
         - $ref: '#/components/parameters/UserIdHeader'
+        - $ref: '#/components/parameters/AttemptIdHeader'
       requestBody:
         required: true
         content:
@@ -81,6 +82,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Конфликт попытки (тот же attemptId, другой пользователь или сумма)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 components:
   securitySchemes:
     bearerAuth:
@@ -96,6 +103,14 @@ components:
       schema:
         type: integer
         format: int64
+    AttemptIdHeader:
+      name: X-Attempt-Id
+      in: header
+      required: true
+      description: Уникальный идентификатор попытки оплаты (идемпотентный ключ)
+      schema:
+        type: string
+        format: uuid
   schemas:
     BalanceResponse:
       type: object

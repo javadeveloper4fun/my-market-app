@@ -11,6 +11,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import ru.yandex.practicum.payments.service.BalanceAccount;
+import ru.yandex.practicum.payments.service.PaymentAttemptService;
 
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -23,11 +24,15 @@ class PaymentsSecurityContractTest {
     @Autowired
     private BalanceAccount account;
 
+    @Autowired
+    private PaymentAttemptService attemptService;
+
     private WebTestClient client;
 
     @BeforeEach
     void setUp() {
         account.reset();
+        attemptService.reset();
         client = WebTestClient.bindToApplicationContext(context)
                 .apply(springSecurity())
                 .configureClient()
@@ -60,6 +65,7 @@ class PaymentsSecurityContractTest {
                 .post()
                 .uri("/api/v1/payments")
                 .header("X-User-Id", "1")
+                .header("X-Attempt-Id", "00000000-0000-0000-0000-000000000006")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("{\"amount\":1500}")
                 .exchange()
