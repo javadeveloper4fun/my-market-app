@@ -4,7 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,6 +19,7 @@ import org.springframework.boot.data.r2dbc.test.autoconfigure.DataR2dbcTest;
 import org.springframework.boot.liquibase.autoconfigure.LiquibaseAutoConfiguration;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
+import reactor.core.scheduler.Schedulers;
 import ru.yandex.practicum.mymarket.PostgreSqlTestContainerConfiguration;
 import ru.yandex.practicum.mymarket.config.LiquibaseDataSourceConfig;
 import ru.yandex.practicum.mymarket.model.CartItem;
@@ -239,6 +246,61 @@ class ItemRepositoryPostgreSqlTest extends DatabaseResetTest {
 
         assertThat(cartItemRepository.decreaseCount(jacket.getId(), 1, USER_ID).block())
                 .isZero();
+    }
+
+    /**
+     * Проверяет атомарный UPSERT корзины на реальном PostgreSQL.
+     */
+    @Test
+    void upsertIncreaseCountWorksOnRealPostgreSql() {
+        Item item = save(new Item("Куртка", "Тёплая куртка", "images/jacket.jpg", new BigDecimal("4500.00")));
+
+        cartItemRepository.upsertIncreaseCount(item.getId(), USER_ID).block();
+        cartItemRepository.upsertIncreaseCount(item.getId(), USER_ID).block();
+
+        CartItem position =
+                cartItemRepository.findByItemIdAndUserId(item.getId(), USER_ID).block();
+        assertThat(position).isNotNull();
+        assertThat(position.getCount()).isEqualTo(2);
+    }
+
+    /**
+     * Проверяет, что параллельный UPSERT на реальной PostgreSQL даёт одну строку с суммарным количеством.
+     */
+    @Test
+    void concurrentUpsertIncreaseCountCreatesSingleRowOnRealPostgreSql() throws Exception {
+        Item item = save(new Item("Куртка", "Тёплая куртка", "images/jacket.jpg", new BigDecimal("4500.00")));
+        int attempts = 10;
+        CountDownLatch ready = new CountDownLatch(attempts);
+        CountDownLatch start = new CountDownLatch(1);
+        try (ExecutorService executor = Executors.newFixedThreadPool(attempts)) {
+            List<Future<Void>> futures = new ArrayList<>(attempts);
+            for (int i = 0; i < attempts; i++) {
+                futures.add(executor.submit(() -> {
+                    ready.countDown();
+                    if (!start.await(10, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("Concurrent start was not released");
+                    }
+                    cartItemRepository
+                            .upsertIncreaseCount(item.getId(), USER_ID)
+                            .subscribeOn(Schedulers.boundedElastic())
+                            .block();
+                    return null;
+                }));
+            }
+
+            assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            for (Future<Void> future : futures) {
+                future.get(30, TimeUnit.SECONDS);
+            }
+        }
+
+        List<CartItem> positions =
+                cartItemRepository.findAllSortedByUserId(USER_ID).collectList().block();
+        assertThat(positions).hasSize(1);
+        assertThat(positions.getFirst().getItemId()).isEqualTo(item.getId());
+        assertThat(positions.getFirst().getCount()).isEqualTo(attempts);
     }
 
     /**

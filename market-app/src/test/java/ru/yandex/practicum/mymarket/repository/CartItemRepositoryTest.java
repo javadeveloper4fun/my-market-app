@@ -131,6 +131,23 @@ class CartItemRepositoryTest extends DatabaseResetTest {
                 .isInstanceOf(DuplicateKeyException.class);
     }
 
+
+    /**
+     * Проверяет атомарный UPSERT: повторное добавление увеличивает количество,
+     * а не создаёт новую строку.
+     */
+    @Test
+    void upsertIncreaseCountIncrementsExistingRow() {
+        Item item = save(item("Куртка", "4500.00"));
+
+        cartItemRepository.upsertIncreaseCount(item.getId(), USER_ID).block();
+        cartItemRepository.upsertIncreaseCount(item.getId(), USER_ID).block();
+
+        List<CartItem> all = cartItemRepository.findAll().collectList().block();
+        assertThat(all).hasSize(1);
+        assertThat(all.getFirst().getCount()).isEqualTo(2);
+    }
+
     /**
      * Создаёт и сохраняет товар.
      *

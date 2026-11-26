@@ -5,9 +5,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.reactive.TransactionalOperator;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.cache.CachedItem;
@@ -35,11 +34,17 @@ public class CartService {
     private final CartItemRepository cartItemRepository;
     private final ItemRepository itemRepository;
     private final ItemCache itemCache;
+    private final TransactionalOperator transactionalOperator;
 
-    public CartService(CartItemRepository cartItemRepository, ItemRepository itemRepository, ItemCache itemCache) {
+    public CartService(
+            CartItemRepository cartItemRepository,
+            ItemRepository itemRepository,
+            ItemCache itemCache,
+            TransactionalOperator transactionalOperator) {
         this.cartItemRepository = cartItemRepository;
         this.itemRepository = itemRepository;
         this.itemCache = itemCache;
+        this.transactionalOperator = transactionalOperator;
     }
 
     /**
@@ -104,43 +109,28 @@ public class CartService {
     /**
      * Применяет действие (увеличить/уменьшить/удалить) к позиции товара в корзине пользователя.
      *
-     * <p>Изменения выполняются атомарными SQL-операциями с фильтром по user_id,
-     * чтобы параллельные запросы не теряли обновления количества и пользователь
-     * не мог менять чужую корзину. Для добавления новой позиции при гонке
-     * используется уникальность {@code (item_id, user_id)}: при конфликте
-     * вставки количество увеличивается повторно.
+     * <p>Изменения выполняются SQL-операциями с фильтром по user_id. Добавление
+     * товара выполняется одним атомарным UPSERT по {@code (item_id, user_id)},
+     * поэтому параллельные запросы не теряют обновления количества.
      *
      * @param itemId идентификатор товара
      * @param action действие над позицией
      * @param userId идентификатор пользователя
      * @return завершение операции
      */
-    @Transactional
     public Mono<Void> applyAction(long itemId, Action action, Long userId) {
         return switch (action) {
-            case PLUS -> increase(itemId, userId);
-            case MINUS -> decrease(itemId, userId);
+            case PLUS -> transactionalOperator.transactional(increase(itemId, userId));
+            case MINUS -> transactionalOperator.transactional(decrease(itemId, userId));
             case DELETE -> cartItemRepository.deleteByItemId(itemId, userId).then();
         };
     }
 
     private Mono<Void> increase(long itemId, Long userId) {
-        return cartItemRepository.increaseCount(itemId, userId).flatMap(updated -> {
-            if (updated > 0) {
-                return Mono.empty();
-            }
-            return itemRepository
-                    .findById(itemId)
-                    .switchIfEmpty(Mono.error(() -> new ItemNotFoundException(itemId)))
-                    .then(cartItemRepository
-                            .save(new CartItem(itemId, 1, userId))
-                            .then())
-                    .onErrorResume(
-                            DuplicateKeyException.class,
-                            e -> cartItemRepository
-                                    .increaseCount(itemId, userId)
-                                    .then());
-        });
+        return itemRepository
+                .findById(itemId)
+                .switchIfEmpty(Mono.error(() -> new ItemNotFoundException(itemId)))
+                .then(cartItemRepository.upsertIncreaseCount(itemId, userId).then());
     }
 
     private Mono<Void> decrease(long itemId, Long userId) {

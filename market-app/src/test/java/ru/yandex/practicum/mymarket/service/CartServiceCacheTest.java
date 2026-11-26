@@ -14,6 +14,7 @@ import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.reactive.TransactionalOperator;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.cache.CachedItem;
@@ -40,6 +41,9 @@ class CartServiceCacheTest {
 
     @Mock
     private ItemCache itemCache;
+
+    @Mock
+    private TransactionalOperator transactionalOperator;
 
     @InjectMocks
     private CartService cartService;

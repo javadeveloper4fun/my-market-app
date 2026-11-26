@@ -15,7 +15,7 @@ import ru.yandex.practicum.mymarket.model.CartItem;
  * менять только свои позиции корзины. Это защита от IDOR — нельзя получить или
  * изменить чужую позицию по идентификатору товара.
  */
-public interface CartItemRepository extends ReactiveCrudRepository<CartItem, Long> {
+public interface CartItemRepository extends ReactiveCrudRepository<CartItem, Long>, CartItemRepositoryCustom {
 
     /**
      * Возвращает позицию корзины по товару и пользователю.
@@ -43,17 +43,6 @@ public interface CartItemRepository extends ReactiveCrudRepository<CartItem, Lon
      */
     @Query("SELECT * FROM cart_item WHERE user_id = :userId ORDER BY id")
     Flux<CartItem> findAllSortedByUserId(Long userId);
-
-    /**
-     * Увеличивает количество товара в позиции корзины на единицу.
-     *
-     * @param itemId идентификатор товара
-     * @param userId идентификатор пользователя
-     * @return число изменённых строк
-     */
-    @Modifying
-    @Query("UPDATE cart_item SET count = count + 1 WHERE item_id = :itemId AND user_id = :userId")
-    Mono<Integer> increaseCount(long itemId, Long userId);
 
     /**
      * Уменьшает количество товара в позиции корзины на оплаченное число.

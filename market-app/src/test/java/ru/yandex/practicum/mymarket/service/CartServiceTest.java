@@ -4,11 +4,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import reactor.core.scheduler.Schedulers;
 import ru.yandex.practicum.mymarket.dto.CartPage;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.model.CartItem;
@@ -35,7 +43,7 @@ class CartServiceTest extends DatabaseResetTest {
 
     private static final Long USER_ID = 1L;
 
-    @org.junit.jupiter.api.BeforeEach
+    @BeforeEach
     void seedUser() {
         databaseClient
                 .sql("MERGE INTO users (id, username, password_hash, enabled, created_at) "
@@ -131,6 +139,44 @@ class CartServiceTest extends DatabaseResetTest {
         List<CartItem> all = cartItemRepository.findAll().collectList().block();
         assertThat(all).hasSize(1);
         assertThat(all.getFirst().getCount()).isEqualTo(2);
+    }
+
+    /**
+     * Проверяет, что параллельные добавления одного товара одним пользователем
+     * дают одну строку с суммарным количеством.
+     */
+    @Test
+    void concurrentPlusCreatesSingleRowWithTotalCount() throws Exception {
+        Item item = saveItem("Тестовый товар", "Описание", "1500");
+        int attempts = 10;
+        CountDownLatch ready = new CountDownLatch(attempts);
+        CountDownLatch start = new CountDownLatch(1);
+        try (ExecutorService executor = Executors.newFixedThreadPool(attempts)) {
+            List<Future<Void>> futures = new ArrayList<>(attempts);
+            for (int i = 0; i < attempts; i++) {
+                futures.add(executor.submit(() -> {
+                    ready.countDown();
+                    if (!start.await(10, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("Concurrent start was not released");
+                    }
+                    cartService
+                            .applyAction(item.getId(), Action.PLUS, USER_ID)
+                            .subscribeOn(Schedulers.boundedElastic())
+                            .block();
+                    return null;
+                }));
+            }
+
+            assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            for (Future<Void> future : futures) {
+                future.get(30, TimeUnit.SECONDS);
+            }
+        }
+
+        List<CartItem> all = cartItemRepository.findAll().collectList().block();
+        assertThat(all).hasSize(1);
+        assertThat(all.getFirst().getCount()).isEqualTo(attempts);
     }
 
     @Test
