@@ -169,7 +169,9 @@ class WebFluxFlowIntegrationTest extends DatabaseResetTest {
                         "Location",
                         l -> assertThat(l).contains("/cart/items").contains("paymentError=insufficient-funds"));
 
-        assertThat(orderRepository.count().block()).isZero();
+        assertThat(orderRepository.count().block()).isEqualTo(1);
+        assertThat(orderRepository.findAll().collectList().block().getFirst().getStatus())
+                .isEqualTo("AWAITING_PAYMENT");
         assertThat(cartItemRepository.count().block()).isEqualTo(1);
     }
 
@@ -187,9 +189,14 @@ class WebFluxFlowIntegrationTest extends DatabaseResetTest {
                 .expectHeader()
                 .value(
                         "Location",
-                        l -> assertThat(l).contains("/cart/items").contains("paymentError=payments-unavailable"));
+                        l -> assertThat(l)
+                                .contains("/cart/items")
+                                .contains("paymentError=payments-unavailable")
+                                .contains("attemptId="));
 
-        assertThat(orderRepository.count().block()).isZero();
+        assertThat(orderRepository.count().block()).isEqualTo(1);
+        assertThat(orderRepository.findAll().collectList().block().getFirst().getStatus())
+                .isEqualTo("AWAITING_PAYMENT");
         assertThat(cartItemRepository.count().block()).isEqualTo(1);
     }
 

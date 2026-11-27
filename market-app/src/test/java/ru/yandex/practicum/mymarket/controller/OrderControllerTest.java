@@ -2,6 +2,8 @@ package ru.yandex.practicum.mymarket.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.csrf;
 import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.mockUser;
@@ -22,10 +24,13 @@ import org.thymeleaf.extras.springsecurity6.dialect.SpringSecurityDialect;
 import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.OrderDto;
+import ru.yandex.practicum.mymarket.payments.AttemptConflictException;
 import ru.yandex.practicum.mymarket.payments.InsufficientFundsException;
 import ru.yandex.practicum.mymarket.payments.InvalidPaymentRequestException;
 import ru.yandex.practicum.mymarket.payments.PaymentsUnavailableException;
+import ru.yandex.practicum.mymarket.service.CheckoutRetryException;
 import ru.yandex.practicum.mymarket.service.CheckoutService;
+import ru.yandex.practicum.mymarket.service.CheckoutService.CheckoutResult;
 import ru.yandex.practicum.mymarket.service.EmptyCartException;
 import ru.yandex.practicum.mymarket.service.OrderNotFoundException;
 import ru.yandex.practicum.mymarket.service.OrderService;
@@ -74,7 +79,7 @@ class OrderControllerTest {
      */
     @Test
     void getOrdersRendersOrdersView() {
-        OrderDto order = new OrderDto(1L, List.of(), 7000L);
+        OrderDto order = new OrderDto(1L, List.of(), 7000L, "PAID");
         when(orderService.getOrders(eq(1L))).thenReturn(Mono.just(List.of(order)));
 
         authed().get()
@@ -83,7 +88,7 @@ class OrderControllerTest {
                 .expectStatus()
                 .isOk()
                 .expectBody(String.class)
-                .value(html -> assertThat(html).contains("Заказ"));
+                .value(html -> assertThat(html).contains("Заказ").contains("Оплачен"));
     }
 
     /**
@@ -92,7 +97,7 @@ class OrderControllerTest {
     @Test
     void getOrderRendersOrderViewWithNewOrderFlag() {
         ItemDto item = new ItemDto(1L, "Куртка", "", "", 1500L, 2);
-        OrderDto order = new OrderDto(1L, List.of(item), 3000L);
+        OrderDto order = new OrderDto(1L, List.of(item), 3000L, "PAID");
         when(orderService.getOrder(eq(1L), eq(1L))).thenReturn(Mono.just(order));
 
         authed().get()
@@ -101,7 +106,7 @@ class OrderControllerTest {
                 .expectStatus()
                 .isOk()
                 .expectBody(String.class)
-                .value(html -> assertThat(html).contains("Куртка"));
+                .value(html -> assertThat(html).contains("Куртка").contains("Оплачен"));
     }
 
     /**
@@ -110,7 +115,7 @@ class OrderControllerTest {
      */
     @Test
     void getOrderDefaultsNewOrderToFalse() {
-        OrderDto order = new OrderDto(1L, List.of(), 0L);
+        OrderDto order = new OrderDto(1L, List.of(), 0L, "PAID");
         when(orderService.getOrder(eq(1L), eq(1L))).thenReturn(Mono.just(order));
 
         authed().get()
@@ -127,7 +132,8 @@ class OrderControllerTest {
      */
     @Test
     void buyRedirectsToNewOrder() {
-        when(checkoutService.checkout()).thenReturn(Mono.just(42L));
+        when(checkoutService.checkout(nullable(String.class)))
+                .thenReturn(Mono.just(new CheckoutResult(42L, "attempt-1")));
 
         authed().post()
                 .uri("/buy")
@@ -143,7 +149,8 @@ class OrderControllerTest {
      */
     @Test
     void buyRedirectsToCartWhenCartIsEmpty() {
-        when(checkoutService.checkout()).thenReturn(Mono.error(new EmptyCartException("Cart is empty")));
+        when(checkoutService.checkout(nullable(String.class)))
+                .thenReturn(Mono.error(new EmptyCartException("Cart is empty")));
 
         authed().post()
                 .uri("/buy")
@@ -165,7 +172,8 @@ class OrderControllerTest {
      */
     @Test
     void buyDoesNotRedirectOnUnexpectedIllegalState() {
-        when(checkoutService.checkout()).thenReturn(Mono.error(new IllegalStateException("connection lost")));
+        when(checkoutService.checkout(nullable(String.class)))
+                .thenReturn(Mono.error(new IllegalStateException("connection lost")));
 
         authed().post().uri("/buy").exchange().expectStatus().is5xxServerError();
     }
@@ -175,7 +183,7 @@ class OrderControllerTest {
      */
     @Test
     void buyRedirectsToCartWhenFundsAreInsufficient() {
-        when(checkoutService.checkout()).thenReturn(Mono.error(new InsufficientFundsException()));
+        when(checkoutService.checkout(nullable(String.class))).thenReturn(Mono.error(new InsufficientFundsException()));
 
         authed().post()
                 .uri("/buy")
@@ -191,7 +199,7 @@ class OrderControllerTest {
      */
     @Test
     void buyRedirectsToCartWhenPaymentRequestIsInvalid() {
-        when(checkoutService.checkout())
+        when(checkoutService.checkout(nullable(String.class)))
                 .thenReturn(Mono.error(new InvalidPaymentRequestException("bad amount", new IllegalStateException())));
 
         authed().post()
@@ -208,7 +216,8 @@ class OrderControllerTest {
      */
     @Test
     void buyRedirectsToCartWhenPaymentsAreUnavailable() {
-        when(checkoutService.checkout()).thenReturn(Mono.error(new PaymentsUnavailableException("connection refused")));
+        when(checkoutService.checkout(nullable(String.class)))
+                .thenReturn(Mono.error(new PaymentsUnavailableException("connection refused")));
 
         authed().post()
                 .uri("/buy")
@@ -217,6 +226,50 @@ class OrderControllerTest {
                 .is3xxRedirection()
                 .expectHeader()
                 .location("/cart/items?paymentError=payments-unavailable");
+    }
+
+    @Test
+    void buyPassesAttemptIdToCheckout() {
+        when(checkoutService.checkout("attempt-9")).thenReturn(Mono.just(new CheckoutResult(42L, "attempt-9")));
+
+        authed().post()
+                .uri("/buy?attemptId=attempt-9")
+                .exchange()
+                .expectStatus()
+                .is3xxRedirection()
+                .expectHeader()
+                .location("/orders/42?newOrder=true");
+
+        verify(checkoutService).checkout("attempt-9");
+    }
+
+    @Test
+    void buyRedirectsWithAttemptIdWhenPaymentCanBeRetried() {
+        when(checkoutService.checkout(nullable(String.class)))
+                .thenReturn(Mono.error(new CheckoutRetryException(
+                        "attempt-9", "payments-unavailable", new IllegalStateException("timeout"))));
+
+        authed().post()
+                .uri("/buy")
+                .exchange()
+                .expectStatus()
+                .is3xxRedirection()
+                .expectHeader()
+                .location("/cart/items?paymentError=payments-unavailable&attemptId=attempt-9");
+    }
+
+    @Test
+    void buyRedirectsWithConflictCodeWhenAttemptIsBusy() {
+        when(checkoutService.checkout(nullable(String.class)))
+                .thenReturn(Mono.error(new AttemptConflictException("another checkout in progress")));
+
+        authed().post()
+                .uri("/buy")
+                .exchange()
+                .expectStatus()
+                .is3xxRedirection()
+                .expectHeader()
+                .location("/cart/items?paymentError=attempt-conflict");
     }
 
     /**

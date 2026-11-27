@@ -23,17 +23,19 @@ import ru.yandex.practicum.mymarket.model.OrderItem;
  * @param id       идентификатор заказа
  * @param items    позиции заказа
  * @param totalSum суммарная стоимость заказа
+ * @param status   статус оплаты заказа
  */
-public record OrderDto(long id, List<ItemDto> items, long totalSum) {
+public record OrderDto(long id, List<ItemDto> items, long totalSum, String status) {
 
     /**
-     * Собирает DTO заказа из его позиций.
+     * Собирает DTO заказа из его позиций и статуса.
      *
-     * @param id    идентификатор заказа
-     * @param items позиции заказа
+     * @param id     идентификатор заказа
+     * @param items  позиции заказа
+     * @param status статус заказа
      * @return DTO заказа
      */
-    public static OrderDto of(long id, List<OrderItem> items) {
+    public static OrderDto of(long id, List<OrderItem> items, String status) {
         List<ItemDto> dtos = items.stream()
                 .map(row ->
                         new ItemDto(row.getItemId(), row.getTitle(), "", "", priceOf(row.getPrice()), row.getCount()))
@@ -41,7 +43,7 @@ public record OrderDto(long id, List<ItemDto> items, long totalSum) {
         long totalSum = items.stream()
                 .mapToLong(row -> priceOf(row.getPrice()) * row.getCount())
                 .sum();
-        return new OrderDto(id, dtos, totalSum);
+        return new OrderDto(id, dtos, totalSum, status);
     }
 
     /**

@@ -3,6 +3,7 @@ package ru.yandex.practicum.mymarket.service;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
@@ -13,7 +14,9 @@ import ru.yandex.practicum.mymarket.dto.OrderDto;
 import ru.yandex.practicum.mymarket.model.CartItem;
 import ru.yandex.practicum.mymarket.model.Item;
 import ru.yandex.practicum.mymarket.model.Order;
+import ru.yandex.practicum.mymarket.model.Order.Status;
 import ru.yandex.practicum.mymarket.model.OrderItem;
+import ru.yandex.practicum.mymarket.payments.AttemptConflictException;
 import ru.yandex.practicum.mymarket.repository.CartItemRepository;
 import ru.yandex.practicum.mymarket.repository.ItemRepository;
 import ru.yandex.practicum.mymarket.repository.OrderItemRepository;
@@ -65,12 +68,21 @@ public class OrderService {
      * @return список заказов с позициями
      */
     public Mono<List<OrderDto>> getOrders(Long userId) {
-        return orderRepository.findAllIdsByUserId(userId).collectList().flatMap(ids -> {
-            if (ids.isEmpty()) {
-                return Mono.just(List.of());
-            }
-            return orderItemRepository.findAllByOrderIdIn(ids).collectList().map(items -> toOrderDtos(ids, items));
-        });
+        return orderRepository
+                .findAllByUserIdOrderByIdDesc(userId)
+                .collectList()
+                .flatMap(orders -> {
+                    if (orders.isEmpty()) {
+                        return Mono.just(List.of());
+                    }
+                    List<Long> ids = orders.stream().map(Order::getId).toList();
+                    Map<Long, String> statuses =
+                            orders.stream().collect(Collectors.toMap(Order::getId, Order::getStatus));
+                    return orderItemRepository
+                            .findAllByOrderIdIn(ids)
+                            .collectList()
+                            .map(items -> toOrderDtos(ids, statuses, items));
+                });
     }
 
     /**
@@ -87,7 +99,7 @@ public class OrderService {
                 .flatMap(order -> orderItemRepository
                         .findAllByOrderIdIn(List.of(order.getId()))
                         .collectList()
-                        .map(items -> OrderDto.of(order.getId(), items)));
+                        .map(items -> OrderDto.of(order.getId(), items, order.getStatus())));
     }
 
     /**
@@ -110,6 +122,68 @@ public class OrderService {
     }
 
     /**
+     * Готовит повтор оплаты по уже созданному заказу.
+     *
+     * @param orderId   идентификатор заказа
+     * @param userId    идентификатор пользователя
+     * @param attemptId идентификатор попытки оформления
+     * @return снимок позиций заказа
+     */
+    public Mono<PreparedOrder> prepareRetryOrder(long orderId, Long userId, String attemptId) {
+        return orderRepository
+                .findByIdAndUserId(orderId, userId)
+                .switchIfEmpty(Mono.error(() -> new OrderNotFoundException(orderId)))
+                .flatMap(order -> {
+                    if (!Objects.equals(attemptId, order.getAttemptId())) {
+                        return Mono.error(new AttemptConflictException("Order belongs to another attempt"));
+                    }
+                    return orderItemRepository
+                            .findAllByOrderId(orderId)
+                            .collectList()
+                            .map(PreparedOrder::of);
+                });
+    }
+
+    /**
+     * Создаёт заказ до платежа: он остаётся в базе при отказе или таймауте.
+     *
+     * @param prepared  подготовленный заказ
+     * @param userId    идентификатор пользователя — владельца заказа
+     * @param attemptId идентификатор попытки оформления
+     * @return идентификатор созданного заказа
+     */
+    @Transactional
+    public Mono<Long> createAwaitingOrder(PreparedOrder prepared, Long userId, String attemptId) {
+        return saveOrderWithItems(prepared.items(), userId, Status.AWAITING_PAYMENT.name(), attemptId);
+    }
+
+    /**
+     * Подтверждает оплату заказа и списывает купленное из корзины только один раз.
+     *
+     * @param orderId идентификатор заказа
+     * @param userId  идентификатор пользователя — владельца заказа
+     * @return {@code true}, если статус переведён в PAID; {@code false}, если заказ уже оплачен
+     */
+    @Transactional
+    public Mono<Boolean> finalizePaidOrder(long orderId, Long userId) {
+        return orderRepository
+                .transitionStatus(orderId, Status.PAID.name(), Status.AWAITING_PAYMENT.name())
+                .flatMap(updated -> {
+                    if (updated == null || updated == 0) {
+                        return Mono.just(false);
+                    }
+                    return orderItemRepository
+                            .findAllByOrderId(orderId)
+                            .collectList()
+                            .flatMap(items -> Flux.fromIterable(items)
+                                    .concatMap(item -> cartItemRepository
+                                            .decreaseCount(item.getItemId(), item.getCount(), userId)
+                                            .then(cartItemRepository.deleteIfEmpty(item.getItemId(), userId)))
+                                    .then(Mono.just(true)));
+                });
+    }
+
+    /**
      * Сохраняет оплаченный заказ и уменьшает позиции корзины на купленное количество.
      *
      * <p>Создание заказа, его позиций и изменение корзины должны выполниться одной
@@ -123,7 +197,7 @@ public class OrderService {
     public Mono<Long> placeOrder(PreparedOrder prepared, Long userId) {
         // Из корзины вычитается только оплаченное количество: товар, добавленный
         // после подготовки заказа, должен остаться в корзине.
-        return saveOrderWithItems(prepared.items(), userId)
+        return saveOrderWithItems(prepared.items(), userId, Status.PAID.name(), null)
                 .flatMap(orderId -> Flux.fromIterable(prepared.items())
                         .concatMap(item -> cartItemRepository
                                 .decreaseCount(item.getItemId(), item.getCount(), userId)
@@ -134,13 +208,15 @@ public class OrderService {
     /**
      * Сохраняет заказ и его позиции.
      *
-     * @param items  позиции заказа без идентификатора заказа
-     * @param userId идентификатор пользователя — владельца заказа
+     * @param items     позиции заказа без идентификатора заказа
+     * @param userId    идентификатор пользователя — владельца заказа
+     * @param status    начальный статус заказа
+     * @param attemptId идентификатор попытки оформления или null
      * @return идентификатор созданного заказа
      */
-    private Mono<Long> saveOrderWithItems(List<OrderItem> items, Long userId) {
+    private Mono<Long> saveOrderWithItems(List<OrderItem> items, Long userId, String status, String attemptId) {
         return orderRepository
-                .save(new Order(userId))
+                .save(new Order(userId, status, attemptId))
                 .flatMap(order -> Flux.fromIterable(items)
                         .concatMap(item -> {
                             item.setOrderId(order.getId());
@@ -177,14 +253,15 @@ public class OrderService {
     /**
      * Раскладывает позиции по заказам и собирает список DTO в порядке заказов.
      *
-     * @param ids   идентификаторы заказов в порядке выдачи
-     * @param items позиции заказов
+     * @param ids      идентификаторы заказов в порядке выдачи
+     * @param statuses статусы заказов по идентификаторам
+     * @param items    позиции заказов
      * @return список заказов
      */
-    private List<OrderDto> toOrderDtos(List<Long> ids, List<OrderItem> items) {
+    private List<OrderDto> toOrderDtos(List<Long> ids, Map<Long, String> statuses, List<OrderItem> items) {
         Map<Long, List<OrderItem>> byOrder = items.stream().collect(Collectors.groupingBy(OrderItem::getOrderId));
         return ids.stream()
-                .map(id -> OrderDto.of(id, byOrder.getOrDefault(id, List.of())))
+                .map(id -> OrderDto.of(id, byOrder.getOrDefault(id, List.of()), statuses.get(id)))
                 .toList();
     }
 }

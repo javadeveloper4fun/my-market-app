@@ -9,10 +9,12 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import reactor.core.publisher.Mono;
+import ru.yandex.practicum.mymarket.payments.AttemptConflictException;
 import ru.yandex.practicum.mymarket.payments.InsufficientFundsException;
 import ru.yandex.practicum.mymarket.payments.InvalidPaymentRequestException;
 import ru.yandex.practicum.mymarket.payments.PaymentsUnavailableException;
 import ru.yandex.practicum.mymarket.security.CurrentUserProvider;
+import ru.yandex.practicum.mymarket.service.CheckoutRetryException;
 import ru.yandex.practicum.mymarket.service.CheckoutService;
 import ru.yandex.practicum.mymarket.service.EmptyCartException;
 import ru.yandex.practicum.mymarket.service.OrderService;
@@ -77,13 +79,14 @@ public class OrderController {
     /**
      * Оформляет покупку.
      *
+     * @param attemptId идентификатор предыдущей попытки после таймаута
      * @return редирект на заказ или корзину
      */
     @PostMapping("/buy")
-    public Mono<String> buy() {
+    public Mono<String> buy(@RequestParam(name = "attemptId", required = false) String attemptId) {
         return checkoutService
-                .checkout()
-                .map(orderId -> "redirect:/orders/" + orderId + "?newOrder=true")
+                .checkout(attemptId)
+                .map(result -> "redirect:/orders/" + result.orderId() + "?newOrder=true")
                 .onErrorResume(EmptyCartException.class, e -> {
                     LOG.warn("Покупка отменена: корзина пуста: {}", e.getMessage());
                     return Mono.just("redirect:/cart/items");
@@ -99,6 +102,15 @@ public class OrderController {
                 .onErrorResume(PaymentsUnavailableException.class, e -> {
                     LOG.warn("Покупка отменена: сервис платежей недоступен: {}", e.getMessage());
                     return Mono.just("redirect:/cart/items?paymentError=payments-unavailable");
+                })
+                .onErrorResume(CheckoutRetryException.class, e -> {
+                    LOG.warn("Покупка прервана, попытка осталась активной: {}", e.getErrorCode());
+                    return Mono.just(
+                            "redirect:/cart/items?paymentError=" + e.getErrorCode() + "&attemptId=" + e.getAttemptId());
+                })
+                .onErrorResume(AttemptConflictException.class, e -> {
+                    LOG.warn("Покупка отменена: конфликт попытки: {}", e.getMessage());
+                    return Mono.just("redirect:/cart/items?paymentError=attempt-conflict");
                 });
     }
 }

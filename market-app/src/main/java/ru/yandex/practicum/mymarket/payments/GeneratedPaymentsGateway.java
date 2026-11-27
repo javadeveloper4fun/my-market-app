@@ -16,6 +16,7 @@ public class GeneratedPaymentsGateway implements PaymentsGateway {
 
     private static final Logger LOG = LoggerFactory.getLogger(GeneratedPaymentsGateway.class);
     private static final String USER_HEADER = "X-User-Id";
+    private static final String ATTEMPT_HEADER = "X-Attempt-Id";
 
     private final WebClient paymentsWebClient;
     private final PaymentsProperties properties;
@@ -39,11 +40,12 @@ public class GeneratedPaymentsGateway implements PaymentsGateway {
     }
 
     @Override
-    public Mono<PaymentResult> pay(long userId, long amount) {
+    public Mono<PaymentResult> pay(long userId, long amount, String attemptId) {
         return paymentsWebClient
                 .post()
                 .uri(properties.baseUrl() + "/api/v1/payments")
                 .header(USER_HEADER, String.valueOf(userId))
+                .header(ATTEMPT_HEADER, attemptId)
                 .bodyValue(new PaymentRequest().amount(amount))
                 .retrieve()
                 .bodyToMono(PaymentResponse.class)
@@ -61,12 +63,17 @@ public class GeneratedPaymentsGateway implements PaymentsGateway {
     private Throwable mapError(Throwable error) {
         if (error instanceof PaymentsUnavailableException
                 || error instanceof InsufficientFundsException
-                || error instanceof InvalidPaymentRequestException) {
+                || error instanceof InvalidPaymentRequestException
+                || error instanceof AttemptConflictException) {
             return error;
         }
         if (error instanceof WebClientResponseException responseException) {
             if (responseException.getStatusCode() == HttpStatus.PAYMENT_REQUIRED) {
                 return new InsufficientFundsException();
+            }
+            if (responseException.getStatusCode() == HttpStatus.CONFLICT) {
+                return new AttemptConflictException(
+                        "Сервис платежей вернул конфликт попытки (attemptId уже используется)");
             }
             if (responseException.getStatusCode() == HttpStatus.UNAUTHORIZED
                     || responseException.getStatusCode() == HttpStatus.FORBIDDEN) {
