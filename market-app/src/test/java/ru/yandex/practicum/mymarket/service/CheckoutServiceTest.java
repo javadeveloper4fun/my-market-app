@@ -23,6 +23,7 @@ import ru.yandex.practicum.mymarket.model.CheckoutAttempt;
 import ru.yandex.practicum.mymarket.model.OrderItem;
 import ru.yandex.practicum.mymarket.model.User;
 import ru.yandex.practicum.mymarket.payments.InsufficientFundsException;
+import ru.yandex.practicum.mymarket.payments.InvalidPaymentRequestException;
 import ru.yandex.practicum.mymarket.payments.PaymentResult;
 import ru.yandex.practicum.mymarket.payments.PaymentsGateway;
 import ru.yandex.practicum.mymarket.payments.PaymentsUnavailableException;
@@ -86,7 +87,7 @@ class CheckoutServiceTest {
     }
 
     @Test
-    void keepsOrderAndFinalizesAttemptWhenFundsAreInsufficient() {
+    void marksOrderAndAttemptInsufficientWhenFundsAreInsufficient() {
         User user = user(1L);
         PreparedOrder prepared = preparedOrder();
         stubCurrentUser(user);
@@ -101,11 +102,13 @@ class CheckoutServiceTest {
         when(checkoutAttemptRepository.attachOrderIfNull(anyLong(), anyLong())).thenReturn(Mono.just(1));
         when(paymentsGateway.pay(eq(1L), eq(2000L), anyString()))
                 .thenReturn(Mono.error(new InsufficientFundsException()));
+        when(orderService.markInsufficientFunds(42L)).thenReturn(Mono.just(true));
         stubTransition(1);
 
         assertThatThrownBy(() -> checkoutService.checkout(null).block()).isInstanceOf(InsufficientFundsException.class);
 
         verify(orderService).createAwaitingOrder(eq(prepared), eq(1L), anyString());
+        verify(orderService).markInsufficientFunds(42L);
         verify(orderService, never()).finalizePaidOrder(anyLong(), anyLong());
         verify(checkoutAttemptRepository)
                 .transitionStatus(
@@ -116,6 +119,73 @@ class CheckoutServiceTest {
                         nullable(Long.class),
                         nullable(Long.class),
                         eq(CheckoutAttempt.Status.AWAITING_PAYMENT.name()));
+    }
+
+    @Test
+    void marksOrderAndAttemptInsufficientWhenPaymentRequestIsInvalid() {
+        User user = user(1L);
+        PreparedOrder prepared = preparedOrder();
+        stubCurrentUser(user);
+        when(orderService.prepareOrder(1L)).thenReturn(Mono.just(prepared));
+        when(checkoutAttemptRepository.save(any(CheckoutAttempt.class))).thenAnswer(invocation -> {
+            CheckoutAttempt attempt = invocation.getArgument(0);
+            attempt.setId(1L);
+            return Mono.just(attempt);
+        });
+        when(orderService.createAwaitingOrder(eq(prepared), eq(1L), anyString()))
+                .thenReturn(Mono.just(42L));
+        when(checkoutAttemptRepository.attachOrderIfNull(anyLong(), anyLong())).thenReturn(Mono.just(1));
+        when(paymentsGateway.pay(eq(1L), eq(2000L), anyString()))
+                .thenReturn(Mono.error(new InvalidPaymentRequestException("bad amount")));
+        when(orderService.markInsufficientFunds(42L)).thenReturn(Mono.just(true));
+        stubTransition(1);
+
+        assertThatThrownBy(() -> checkoutService.checkout(null).block())
+                .isInstanceOf(InvalidPaymentRequestException.class);
+
+        verify(orderService).markInsufficientFunds(42L);
+        verify(orderService, never()).finalizePaidOrder(anyLong(), anyLong());
+        verify(checkoutAttemptRepository)
+                .transitionStatus(
+                        eq(1L),
+                        eq(CheckoutAttempt.Status.INSUFFICIENT_FUNDS.name()),
+                        nullable(Long.class),
+                        nullable(Long.class),
+                        nullable(Long.class),
+                        nullable(Long.class),
+                        eq(CheckoutAttempt.Status.AWAITING_PAYMENT.name()));
+    }
+
+    @Test
+    void doesNotCallPaymentsWhenOrderCreationFails() {
+        User user = user(1L);
+        PreparedOrder prepared = preparedOrder();
+        stubCurrentUser(user);
+        when(orderService.prepareOrder(1L)).thenReturn(Mono.just(prepared));
+        when(checkoutAttemptRepository.save(any(CheckoutAttempt.class))).thenAnswer(invocation -> {
+            CheckoutAttempt attempt = invocation.getArgument(0);
+            attempt.setId(1L);
+            return Mono.just(attempt);
+        });
+        when(orderService.createAwaitingOrder(eq(prepared), eq(1L), anyString()))
+                .thenReturn(Mono.error(new IllegalStateException("order insert failed")));
+
+        assertThatThrownBy(() -> checkoutService.checkout(null).block())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("order insert failed");
+
+        verify(paymentsGateway, never()).pay(anyLong(), anyLong(), anyString());
+        verify(orderService, never()).markInsufficientFunds(anyLong());
+        verify(orderService, never()).finalizePaidOrder(anyLong(), anyLong());
+        verify(checkoutAttemptRepository, never())
+                .transitionStatus(
+                        anyLong(),
+                        anyString(),
+                        nullable(Long.class),
+                        nullable(Long.class),
+                        nullable(Long.class),
+                        nullable(Long.class),
+                        anyString());
     }
 
     @Test

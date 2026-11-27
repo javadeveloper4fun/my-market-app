@@ -23,7 +23,7 @@ import ru.yandex.practicum.mymarket.security.CurrentUserProvider;
  * Оформление покупки с одной активной попыткой на пользователя.
  *
  * <p>Заказ создаётся до платежа и сохраняется при отказе или таймауте. Повтор
- * после таймаута приходит с тем же attemptId: сервис платежей guarantees
+ * после таймаута приходит с тем же attemptId: сервис платежей гарантирует
  * одно списание на идентификатор попытки, а CAS-переходы не дают продвинуть
  * состояние дважды.
  */
@@ -170,17 +170,38 @@ public class CheckoutService {
                                 .thenReturn(new CheckoutResult(orderId, attempt.getAttemptId()))))
                 .onErrorResume(
                         InsufficientFundsException.class,
-                        error -> transition(attempt, CheckoutAttempt.Status.INSUFFICIENT_FUNDS.name(), null, null)
+                        error -> failOrderAndAttempt(orderId, attempt, CheckoutAttempt.Status.INSUFFICIENT_FUNDS.name())
                                 .then(Mono.error(error)))
                 .onErrorResume(
                         InvalidPaymentRequestException.class,
-                        error -> transition(attempt, CheckoutAttempt.Status.INSUFFICIENT_FUNDS.name(), null, null)
+                        error -> failOrderAndAttempt(orderId, attempt, CheckoutAttempt.Status.INSUFFICIENT_FUNDS.name())
                                 .then(Mono.error(error)))
                 .onErrorResume(
                         PaymentsUnavailableException.class,
                         error -> transition(attempt, CheckoutAttempt.Status.PAYMENT_TIMEOUT.name(), user.getId(), null)
                                 .then(Mono.error(new CheckoutRetryException(
                                         attempt.getAttemptId(), "payments-unavailable", error))));
+    }
+
+    private Mono<Void> failOrderAndAttempt(long orderId, CheckoutAttempt attempt, String status) {
+        return orderService
+                .markInsufficientFunds(orderId)
+                .doOnNext(updated -> {
+                    if (!Boolean.TRUE.equals(updated)) {
+                        LOG.warn(
+                                "Order already finalized amount={} orderId={} status={}",
+                                attempt.getPaymentAmount(),
+                                orderId,
+                                status);
+                    }
+                })
+                .then(transition(attempt, status, null, null))
+                .onErrorResume(error -> {
+                    LOG.error(
+                            "CHECKOUT_CLEANUP_FAILED orderId={} attemptId={}", orderId, attempt.getAttemptId(), error);
+                    return Mono.empty();
+                })
+                .then();
     }
 
     private Mono<Integer> transition(CheckoutAttempt attempt, String status, Long activeUserId, PaymentResult result) {

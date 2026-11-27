@@ -171,7 +171,7 @@ class WebFluxFlowIntegrationTest extends DatabaseResetTest {
 
         assertThat(orderRepository.count().block()).isEqualTo(1);
         assertThat(orderRepository.findAll().collectList().block().getFirst().getStatus())
-                .isEqualTo("AWAITING_PAYMENT");
+                .isEqualTo("INSUFFICIENT_FUNDS");
         assertThat(cartItemRepository.count().block()).isEqualTo(1);
     }
 

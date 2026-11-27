@@ -184,6 +184,19 @@ public class OrderService {
     }
 
     /**
+     * Отмечает ожидающий заказ как заказ с недостаточными средствами.
+     *
+     * @param orderId идентификатор заказа
+     * @return {@code true}, если статус переведён из AWAITING_PAYMENT
+     */
+    @Transactional
+    public Mono<Boolean> markInsufficientFunds(long orderId) {
+        return orderRepository
+                .transitionStatus(orderId, Status.INSUFFICIENT_FUNDS.name(), Status.AWAITING_PAYMENT.name())
+                .map(updated -> updated != null && updated > 0);
+    }
+
+    /**
      * Сохраняет оплаченный заказ и уменьшает позиции корзины на купленное количество.
      *
      * <p>Создание заказа, его позиций и изменение корзины должны выполниться одной
