@@ -84,13 +84,14 @@ docker compose -f docker-compose.yml -f docker-compose.prebuilt.yml up -d --buil
 Контракт: `api/payments-api.yaml` (OpenAPI 3.0.3, source of truth). Клиент и сервер генерируются Gradle-задачами в `build/generated/...`.
 
 - `GET /api/v1/balance` — баланс пользователя, требует JWT и `X-User-Id`.
-- `POST /api/v1/payments` — списание, требует JWT и `X-User-Id`.
+- `POST /api/v1/payments` — идемпотентное списание суммы покупки, требует JWT, `X-User-Id` и `X-Attempt-Id` (UUID).
 
-Коды: `200` успех, `400` некорректный запрос, `401` нет/невалидный JWT, `402` недостаточно средств.
+Коды: `200` успех, `400` некорректный запрос, `401` нет/невалидный JWT, `402` недостаточно средств, `403` доступ запрещён, `409` конфликт попытки: тот же `X-Attempt-Id` уже использован с другим пользователем или суммой.
 
 ## Примечания и упрощения
 
-- Баланс payments-service хранится в памяти (`AtomicLong` per user) — учебное упрощение.
+- Баланс и история попыток `payments-service` хранятся в памяти (`ConcurrentHashMap`) — учебное упрощение. Перезапуск `payments-service` возвращает баланс к `10000` и очищает историю `attemptId`: `docker compose restart payments-service`.
+- Оформление в `market-app` защищено от двойного списания: попытка фиксируется в `checkout_attempts`, заказ создаётся до оплаты в статусе `AWAITING_PAYMENT`, повтор после таймаута или недоступности платежей использует тот же `attemptId`. При отказе по insufficient funds заказ и попытка переводятся в `INSUFFICIENT_FUNDS`.
 - `payments-service` проверяет JWT как OAuth2 Resource Server realm Keycloak, но не ограничивает вызовы только клиентом `market-app`: любой валидный JWT realm принимается. Для production нужно ограничивать `azp`/`client_id` или отдельный audience/scope.
 - `X-User-Id` — доверенный заголовок, который выставляет `market-app`; payments-service не сверяет его с `sub`/claim JWT. Клиент с валидным JWT realm может подменить заголовок — для production нужен маппинг пользователя из токена.
 - Redis используется как cache-aside для каталога; количество товара в корзине всегда читается из БД.
