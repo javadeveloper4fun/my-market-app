@@ -19,6 +19,7 @@ import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.reactive.server.WebTestClient;
+import org.springframework.ui.ExtendedModelMap;
 import org.thymeleaf.extras.springsecurity6.dialect.SpringSecurityDialect;
 import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.dto.CartPage;
@@ -64,9 +65,36 @@ class CartControllerTest {
     }
 
     /**
-     * Проверяет, что GET /cart/items отдаёт страницу корзины с атрибутами
-     * items и total.
+     * Проверяет, что идентификатор попытки и сообщение об ошибке попадают в модель.
      */
+    @Test
+    void getCartKeepsAttemptIdForRetry() {
+        CartPage cart = new CartPage(List.of(new ItemDto(1L, "Куртка", "", "img.jpg", 4500L, 1)), 4500L);
+        when(cartPageService.getCartView()).thenReturn(Mono.just(new CartView(cart, 10_000L, null)));
+        CartController controller = new CartController(cartService, cartPageService, currentUserProvider);
+        ExtendedModelMap model = new ExtendedModelMap();
+
+        controller.getCart(model, "payments-unavailable", "attempt-9").block();
+
+        assertThat(model.get("attemptId")).isEqualTo("attempt-9");
+        assertThat(model.get("paymentMessage"))
+                .isEqualTo("Сервис платежей недоступен. Оформление заказа временно невозможно.");
+    }
+
+    @Test
+    void getCartShowsMessageFromAttemptConflictRedirect() {
+        CartPage cart = new CartPage(List.of(new ItemDto(1L, "Куртка", "", "img.jpg", 4500L, 1)), 4500L);
+        when(cartPageService.getCartView()).thenReturn(Mono.just(new CartView(cart, 10_000L, null)));
+
+        authed().get()
+                .uri("/cart/items?paymentError=attempt-conflict")
+                .exchange()
+                .expectStatus()
+                .isOk()
+                .expectBody(String.class)
+                .value(html -> assertThat(html).contains("Другая покупка уже оформляется"));
+    }
+
     @Test
     void getCartRendersCartView() {
         ItemDto item = new ItemDto(1L, "Куртка", "Описание", "images/jacket.jpg", 4500L, 2);

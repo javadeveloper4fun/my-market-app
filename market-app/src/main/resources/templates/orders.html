@@ -38,6 +38,11 @@
                 <div class="card">
                     <div class="card-header">
                         <a th:text="${'Заказ №'+order.id()}" th:href="${'/orders/'+order.id()}"></a>
+                        <span th:switch="${order.status()}" class="ms-2">
+                            <span th:case="'PAID'" class="badge text-bg-success">Оплачен</span>
+                            <span th:case="'AWAITING_PAYMENT'" class="badge text-bg-warning">Ожидает оплаты</span>
+                            <span th:case="*" class="badge text-bg-secondary" th:text="${order.status()}"></span>
+                        </span>
                     </div>
                     <ul class="list-group list-group-flush" th:each="item : ${order.items()}">
                         <li class="list-group-item" th:text="${item.title()+' ('+item.count()+' шт.) '+(item.price()*item.count())+' руб.'}"/>

@@ -36,14 +36,17 @@ public class CartController {
      *
      * @param model модель представления
      * @param paymentError код ошибки оплаты
+     * @param attemptId    идентификатор попытки после таймаута
      * @return имя шаблона корзины
      */
     @GetMapping("/cart/items")
     public Mono<String> getCart(
-            Model model, @RequestParam(name = "paymentError", required = false) String paymentError) {
+            Model model,
+            @RequestParam(name = "paymentError", required = false) String paymentError,
+            @RequestParam(name = "attemptId", required = false) String attemptId) {
         return cartPageService
                 .getCartView()
-                .doOnNext(view -> fillModel(model, view, paymentError))
+                .doOnNext(view -> fillModel(model, view, paymentError, attemptId))
                 .thenReturn("cart");
     }
 
@@ -61,16 +64,17 @@ public class CartController {
                 .getCurrentUser()
                 .flatMap(user -> cartService.applyAction(id, action, user.getId()))
                 .then(cartPageService.getCartView())
-                .doOnNext(view -> fillModel(model, view, null))
+                .doOnNext(view -> fillModel(model, view, null, null))
                 .thenReturn("cart");
     }
 
-    private void fillModel(Model model, CartView view, String paymentError) {
+    private void fillModel(Model model, CartView view, String paymentError, String attemptId) {
         model.addAttribute("items", view.cart().items());
         model.addAttribute("total", view.cart().total());
         model.addAttribute("balance", view.balance());
         model.addAttribute("canPay", view.canPay());
         model.addAttribute("insufficientFunds", view.insufficientFunds());
+        model.addAttribute("attemptId", attemptId);
         model.addAttribute("paymentMessage", paymentMessage(view, paymentError));
     }
 
@@ -86,6 +90,9 @@ public class CartController {
         }
         if ("payments-unavailable".equals(paymentError)) {
             return "Сервис платежей недоступен. Оформление заказа временно невозможно.";
+        }
+        if ("attempt-conflict".equals(paymentError)) {
+            return "Другая покупка уже оформляется. Повторите попытку позже.";
         }
         return null;
     }

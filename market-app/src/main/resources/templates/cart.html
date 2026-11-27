@@ -77,6 +77,7 @@
             <div class="col">
                 <form action="/buy" method="post" th:if="${isAuthenticated and !items.isEmpty()}" class="no-ajax">
                     <input type="hidden" name="_csrf" th:value="${_csrf.token}"/>
+                    <input type="hidden" name="attemptId" th:if="${attemptId != null}" th:value="${attemptId}"/>
                     <div class="hstack gap-3">
                         <h2 th:text="'Итого: '+${total}+' руб.'"/>
                         <span th:if="${balance != null}" class="text-muted"

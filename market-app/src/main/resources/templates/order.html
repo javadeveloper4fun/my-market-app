@@ -43,6 +43,11 @@
     <div class="row p-2">
         <div class="col">
             <h2 th:text="${'Заказ №'+order.id()}"></h2>
+            <span th:switch="${order.status()}">
+                <span th:case="'PAID'" class="badge text-bg-success">Оплачен</span>
+                <span th:case="'AWAITING_PAYMENT'" class="badge text-bg-warning">Ожидает оплаты</span>
+                <span th:case="*" class="badge text-bg-secondary" th:text="${order.status()}"></span>
+            </span>
         </div>
     </div>
     <div class="row p-2" th:each="item : ${order.items()}">
