@@ -49,3 +49,7 @@ databaseChangeLog:
       file: db/changelog/changes/012-add-user-id-indexes.yaml
   - include:
       file: db/changelog/changes/013-fix-cart-item-unique.yaml
+  - include:
+      file: db/changelog/changes/014-create-checkout-attempts.yaml
+  - include:
+      file: db/changelog/changes/015-add-order-status-attempt.yaml

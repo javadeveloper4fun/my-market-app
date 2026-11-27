@@ -1,0 +1,78 @@
+databaseChangeLog:
+
+  - changeSet:
+      id: "18"
+      author: "student"
+      comment: "Таблица попыток оформления заказа"
+      changes:
+        - createTable:
+            tableName: checkout_attempts
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_checkout_attempts
+                    nullable: false
+              - column:
+                  name: attempt_id
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: uq_checkout_attempt_id
+              - column:
+                  name: user_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: active_user_id
+                  type: BIGINT
+                  constraints:
+                    nullable: true
+                    unique: true
+                    uniqueConstraintName: uq_checkout_active_user
+              - column:
+                  name: status
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: order_id
+                  type: BIGINT
+                  constraints:
+                    nullable: true
+              - column:
+                  name: payment_amount
+                  type: BIGINT
+                  constraints:
+                    nullable: true
+              - column:
+                  name: payment_balance
+                  type: BIGINT
+                  constraints:
+                    nullable: true
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+        - addForeignKeyConstraint:
+            baseTableName: checkout_attempts
+            baseColumnNames: user_id
+            referencedTableName: users
+            referencedColumnNames: id
+            constraintName: fk_checkout_attempts_user
+      rollback:
+        - dropTable:
+            tableName: checkout_attempts

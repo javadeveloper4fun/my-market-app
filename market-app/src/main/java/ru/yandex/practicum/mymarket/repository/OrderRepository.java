@@ -1,6 +1,8 @@
 package ru.yandex.practicum.mymarket.repository;
 
+import org.springframework.data.r2dbc.repository.Modifying;
 import org.springframework.data.r2dbc.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.data.repository.reactive.ReactiveCrudRepository;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -25,6 +27,14 @@ public interface OrderRepository extends ReactiveCrudRepository<Order, Long> {
     Flux<Long> findAllIdsByUserId(Long userId);
 
     /**
+     * Возвращает все заказы пользователя вместе со статусами.
+     *
+     * @param userId идентификатор пользователя
+     * @return поток заказов в порядке убывания идентификатора
+     */
+    Flux<Order> findAllByUserIdOrderByIdDesc(Long userId);
+
+    /**
      * Возвращает заказ по идентификатору и пользователю.
      *
      * @param id     идентификатор заказа
@@ -33,4 +43,25 @@ public interface OrderRepository extends ReactiveCrudRepository<Order, Long> {
      */
     @Query("SELECT * FROM orders WHERE id = :id AND user_id = :userId")
     Mono<Order> findByIdAndUserId(Long id, Long userId);
+
+    /**
+     * Находит заказ по идентификатору попытки оформления.
+     *
+     * @param attemptId идентификатор попытки
+     * @return заказ или пустой результат
+     */
+    Mono<Order> findByAttemptId(String attemptId);
+
+    /**
+     * Меняет статус заказа только если он ещё находится в ожидаемом состоянии.
+     *
+     * @param id            идентификатор заказа
+     * @param newStatus     новый статус
+     * @param expectedStatus ожидаемый текущий статус
+     * @return число обновлённых строк
+     */
+    @Modifying
+    @Query("UPDATE orders SET status = :newStatus WHERE id = :id AND status = :expectedStatus")
+    Mono<Integer> transitionStatus(
+            @Param("id") Long id, @Param("newStatus") String newStatus, @Param("expectedStatus") String expectedStatus);
 }
