@@ -1,5 +1,8 @@
 package ru.yandex.practicum.mymarket.support;
 
+import java.time.Duration;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -10,81 +13,91 @@ import ru.yandex.practicum.mymarket.payments.PaymentResult;
 import ru.yandex.practicum.mymarket.payments.PaymentsGateway;
 import ru.yandex.practicum.mymarket.payments.PaymentsUnavailableException;
 
-/**
- * Заглушка платежного шлюза для интеграционных тестов.
- *
- * <p>Полный контекст не должен ходить в настоящий сервис платежей: тест обязан
- * работать без второго процесса. Бин помечен {@link Primary}, поэтому заменяет
- * сгенерированный шлюз, но не требует выключать его компонент.
- */
 @TestConfiguration(proxyBeanMethods = false)
 public class StubPaymentsConfiguration {
 
-    /**
-     * Создаёт шлюз с большим начальным балансом.
-     *
-     * @return заглушка платежей
-     */
     @Bean
     @Primary
     public PaymentsGateway stubPaymentsGateway() {
-        return new StubPaymentsGateway(1_000_000L);
+        return new StubPaymentsGateway();
     }
 
-    /**
-     * Потокобезопасная заглушка с тем же контрактом, что и настоящий шлюз.
-     *
-     * <p>Баланс и признак недоступности меняются из теста: сценарии «недостаточно
-     * средств» и «сервис недоступен» иначе потребовали бы второго контекста.
-     */
     public static final class StubPaymentsGateway implements PaymentsGateway {
-
-        private final AtomicLong balance;
+        private final ConcurrentMap<Long, AtomicLong> balances = new ConcurrentHashMap<>();
+        private final ConcurrentMap<String, PaymentResult> results = new ConcurrentHashMap<>();
+        private volatile long initialBalanceForAll = 1_000_000L;
         private volatile boolean unavailable;
+        private volatile Duration paymentDelay = Duration.ZERO;
 
-        StubPaymentsGateway(long initialBalance) {
-            this.balance = new AtomicLong(initialBalance);
-        }
-
-        /**
-         * Задаёт баланс заглушки.
-         *
-         * @param value новый баланс
-         */
         public void setBalance(long value) {
-            balance.set(value);
+            initialBalanceForAll = value;
+            balances.clear();
+            results.clear();
+            balances.put(0L, new AtomicLong(value));
         }
 
-        /**
-         * Включает или выключает режим недоступности сервиса.
-         *
-         * @param value {@code true} — заглушка отвечает ошибкой
-         */
         public void setUnavailable(boolean value) {
             unavailable = value;
         }
 
-        @Override
-        public Mono<Long> getBalance() {
-            if (unavailable) {
-                return Mono.error(new PaymentsUnavailableException("stub unavailable"));
-            }
-            return Mono.fromSupplier(balance::get);
+        public void setPaymentDelay(Duration value) {
+            paymentDelay = value;
         }
 
         @Override
-        public Mono<PaymentResult> pay(long amount) {
+        public Mono<Long> getBalance(long userId) {
             if (unavailable) {
                 return Mono.error(new PaymentsUnavailableException("stub unavailable"));
             }
-            return Mono.fromCallable(() -> {
-                long current = balance.get();
-                if (current < amount) {
-                    throw new InsufficientFundsException();
+            return Mono.fromSupplier(() -> balanceFor(userId).get());
+        }
+
+        @Override
+        public Mono<PaymentResult> pay(long userId, long amount, String attemptId) {
+            if (unavailable) {
+                return Mono.error(new PaymentsUnavailableException("stub unavailable"));
+            }
+            Mono<PaymentResult> paymentResult = Mono.fromCallable(() -> {
+                // Идемпотентность: тот же attemptId возвращает сохранённый результат
+                PaymentResult existing = results.get(attemptId);
+                if (existing != null) {
+                    return existing;
                 }
-                balance.set(current - amount);
-                return new PaymentResult(amount, current - amount);
+                // Атомарное списание через CAS (аналог BalanceAccount.withdraw)
+                AtomicLong balance = balanceFor(userId);
+                long remaining;
+                while (true) {
+                    long current = balance.get();
+                    if (current < amount) {
+                        throw new InsufficientFundsException();
+                    }
+                    remaining = current - amount;
+                    if (balance.compareAndSet(current, remaining)) {
+                        break;
+                    }
+                }
+                PaymentResult result = new PaymentResult(amount, remaining);
+                // Сохраняем результат только если никто другой не записал ранее (race-safe)
+                PaymentResult previous = results.putIfAbsent(attemptId, result);
+                if (previous != null) {
+                    // Другой поток уже записал результат — отменяем наше списание и возвращаем его
+                    balance.addAndGet(amount);
+                    return previous;
+                }
+                return result;
             });
+            return paymentDelay.isZero() ? paymentResult : paymentResult.delaySubscription(paymentDelay);
+        }
+
+        private AtomicLong balanceFor(long userId) {
+            return balances.computeIfAbsent(userId, ignored -> new AtomicLong(initialBalanceForAll));
+        }
+
+        public void setBalanceForAll(long value) {
+            initialBalanceForAll = value;
+            balances.clear();
+            results.clear();
+            balances.put(0L, new AtomicLong(value));
         }
     }
 }

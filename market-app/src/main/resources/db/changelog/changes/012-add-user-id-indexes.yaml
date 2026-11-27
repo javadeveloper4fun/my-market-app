@@ -1,0 +1,37 @@
+# ===================================================================
+# Индексы на user_id для корзины и заказов (Спринт 8).
+# ===================================================================
+
+databaseChangeLog:
+
+  - changeSet:
+      id: "15"
+      author: "student"
+      comment: "Индекс на user_id в cart_item"
+      changes:
+        - createIndex:
+            indexName: idx_cart_item_user_id
+            tableName: cart_item
+            columns:
+              - column:
+                  name: user_id
+      rollback:
+        - dropIndex:
+            indexName: idx_cart_item_user_id
+            tableName: cart_item
+
+  - changeSet:
+      id: "16"
+      author: "student"
+      comment: "Индекс на user_id в orders"
+      changes:
+        - createIndex:
+            indexName: idx_orders_user_id
+            tableName: orders
+            columns:
+              - column:
+                  name: user_id
+      rollback:
+        - dropIndex:
+            indexName: idx_orders_user_id
+            tableName: orders

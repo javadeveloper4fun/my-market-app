@@ -55,14 +55,19 @@ public abstract class DatabaseResetTest {
      */
     protected List<String> resetStatements() {
         return List.of(
+                "DELETE FROM checkout_attempts",
                 "DELETE FROM order_item",
                 "DELETE FROM cart_item",
                 "DELETE FROM orders",
                 "DELETE FROM items",
+                "DELETE FROM user_roles",
+                "DELETE FROM users",
+                "ALTER TABLE checkout_attempts ALTER COLUMN id RESTART WITH 1",
                 "ALTER TABLE order_item ALTER COLUMN id RESTART WITH 1",
                 "ALTER TABLE cart_item ALTER COLUMN id RESTART WITH 1",
                 "ALTER TABLE orders ALTER COLUMN id RESTART WITH 1",
-                "ALTER TABLE items ALTER COLUMN id RESTART WITH 1");
+                "ALTER TABLE items ALTER COLUMN id RESTART WITH 1",
+                "ALTER TABLE users ALTER COLUMN id RESTART WITH 1");
     }
 
     /**
@@ -75,14 +80,19 @@ public abstract class DatabaseResetTest {
      */
     protected List<String> postgreSqlResetStatements() {
         return List.of(
+                "DELETE FROM checkout_attempts",
                 "DELETE FROM order_item",
                 "DELETE FROM cart_item",
                 "DELETE FROM orders",
                 "DELETE FROM items",
+                "DELETE FROM user_roles",
+                "DELETE FROM users",
+                "ALTER SEQUENCE checkout_attempts_id_seq RESTART WITH 1",
                 "ALTER SEQUENCE order_item_id_seq RESTART WITH 1",
                 "ALTER SEQUENCE cart_item_id_seq RESTART WITH 1",
                 "ALTER SEQUENCE orders_id_seq RESTART WITH 1",
-                "ALTER SEQUENCE items_id_seq RESTART WITH 1");
+                "ALTER SEQUENCE items_id_seq RESTART WITH 1",
+                "ALTER SEQUENCE users_id_seq RESTART WITH 1");
     }
 
     @Autowired

@@ -1,0 +1,59 @@
+# ===================================================================
+# Персонификация корзины и заказов (Спринт 8).
+#
+# Добавляет user_id в таблицы позиций корзины и заказов, чтобы каждый
+# авторизованный пользователь видел только свои данные.
+#
+# Существующие данные (если есть) получают user_id = NULL — это допустимо
+# для учебного проекта, так как перед спринтом 8 авторизации не было.
+# ===================================================================
+
+databaseChangeLog:
+
+  - changeSet:
+      id: "13"
+      author: "student"
+      comment: "Добавить user_id в позиции корзины"
+      onFailMessage: "Колонка user_id уже существует в cart_item"
+      preConditions:
+        - not:
+            - columnExists:
+                tableName: cart_item
+                columnName: user_id
+      changes:
+        - addColumn:
+            tableName: cart_item
+            columns:
+              - column:
+                  name: user_id
+                  type: BIGINT
+                  constraints:
+                    nullable: true
+      rollback:
+        - dropColumn:
+            tableName: cart_item
+            columnName: user_id
+
+  - changeSet:
+      id: "14"
+      author: "student"
+      comment: "Добавить user_id в заказы"
+      onFailMessage: "Колонка user_id уже существует в orders"
+      preConditions:
+        - not:
+            - columnExists:
+                tableName: orders
+                columnName: user_id
+      changes:
+        - addColumn:
+            tableName: orders
+            columns:
+              - column:
+                  name: user_id
+                  type: BIGINT
+                  constraints:
+                    nullable: true
+      rollback:
+        - dropColumn:
+            tableName: orders
+            columnName: user_id

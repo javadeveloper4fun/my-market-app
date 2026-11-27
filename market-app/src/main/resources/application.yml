@@ -44,6 +44,19 @@ spring:
     # MODE=PostgreSQL схема называется PUBLIC.
     default-schema: public
 
+  security:
+    oauth2:
+      client:
+        registration:
+          market-app:
+            provider: keycloak
+            client-id: ${MARKET_OAUTH2_CLIENT_ID:market-app}
+            client-secret: ${MARKET_OAUTH2_CLIENT_SECRET:market-secret}
+            authorization-grant-type: client_credentials
+        provider:
+          keycloak:
+            token-uri: ${MARKET_OAUTH2_TOKEN_URI:http://localhost:8082/realms/market/protocol/openid-connect/token}
+
   webflux:
     multipart:
       # Предельный размер запроса с картинкой. Ключ webflux, а не servlet:
@@ -83,3 +96,6 @@ market:
     # в multipart: одно проверяет сервер отправки, другое — прикладной код,
     # и без второй проверки файл всё равно уйдёт в хранилище.
     max-upload-size: 5MB
+
+
+

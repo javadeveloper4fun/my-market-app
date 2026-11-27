@@ -14,6 +14,7 @@ import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.reactive.TransactionalOperator;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.cache.CachedItem;
@@ -41,15 +42,18 @@ class CartServiceCacheTest {
     @Mock
     private ItemCache itemCache;
 
+    @Mock
+    private TransactionalOperator transactionalOperator;
+
     @InjectMocks
     private CartService cartService;
 
     @Test
     void cartMetadataIsReadFromCache() {
-        when(cartItemRepository.findAllSorted()).thenReturn(Flux.just(new CartItem(1L, 2)));
+        when(cartItemRepository.findAllSortedByUserId(1L)).thenReturn(Flux.just(new CartItem(1L, 2, 1L)));
         when(itemCache.getItem(1L)).thenReturn(Mono.just(Optional.of(cachedItem())));
 
-        var cart = cartService.getCart().block();
+        var cart = cartService.getCart(1L).block();
 
         assertThat(cart.items()).singleElement().satisfies(dto -> {
             assertThat(dto.title()).isEqualTo("Куртка");
@@ -61,12 +65,12 @@ class CartServiceCacheTest {
 
     @Test
     void missingMetadataIsLoadedFromDatabaseAndWrittenToCache() {
-        when(cartItemRepository.findAllSorted()).thenReturn(Flux.just(new CartItem(1L, 1)));
+        when(cartItemRepository.findAllSortedByUserId(1L)).thenReturn(Flux.just(new CartItem(1L, 1, 1L)));
         when(itemCache.getItem(1L)).thenReturn(Mono.just(Optional.empty()));
         when(itemRepository.findAllById(ArgumentMatchers.<Iterable<Long>>any())).thenReturn(Flux.just(item()));
         when(itemCache.putItem(any())).thenReturn(Mono.empty());
 
-        var cart = cartService.getCart().block();
+        var cart = cartService.getCart(1L).block();
 
         assertThat(cart.items()).singleElement().extracting(dto -> dto.title()).isEqualTo("Куртка");
         verify(itemCache).putItem(any(CachedItem.class));

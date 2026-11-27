@@ -1,0 +1,24 @@
+{
+  "realm": "market",
+  "enabled": true,
+  "clients": [
+    {
+      "clientId": "market-app",
+      "name": "market-app",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "market-secret",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "authorizationServicesEnabled": false,
+      "clientAuthenticatorType": "client-secret",
+      "defaultClientScopes": ["profile", "email", "roles"],
+      "optionalClientScopes": ["address", "phone", "offline_access"],
+      "attributes": {
+        "access.token.lifespan": "300"
+      }
+    }
+  ]
+}

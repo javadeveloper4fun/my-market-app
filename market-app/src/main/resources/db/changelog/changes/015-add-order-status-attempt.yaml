@@ -1,0 +1,35 @@
+databaseChangeLog:
+
+  - changeSet:
+      id: "19"
+      author: "student"
+      comment: "Статус заказа и идентификатор попытки оформления"
+      changes:
+        - addColumn:
+            tableName: orders
+            columns:
+              - column:
+                  name: status
+                  type: VARCHAR(32)
+                  defaultValue: "PAID"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: attempt_id
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: true
+        - addUniqueConstraint:
+            tableName: orders
+            columnNames: attempt_id
+            constraintName: uq_orders_attempt_id
+      rollback:
+        - dropUniqueConstraint:
+            tableName: orders
+            constraintName: uq_orders_attempt_id
+        - dropColumn:
+            tableName: orders
+            columnName: attempt_id
+        - dropColumn:
+            tableName: orders
+            columnName: status

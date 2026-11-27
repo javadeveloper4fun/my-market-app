@@ -26,4 +26,12 @@ public interface OrderItemRepository extends ReactiveCrudRepository<OrderItem, L
      * @return поток позиций этих заказов
      */
     Flux<OrderItem> findAllByOrderIdIn(Collection<Long> orderIds);
+
+    /**
+     * Возвращает позиции одного заказа.
+     *
+     * @param orderId идентификатор заказа
+     * @return поток позиций заказа
+     */
+    Flux<OrderItem> findAllByOrderId(Long orderId);
 }

@@ -4,7 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,6 +19,7 @@ import org.springframework.boot.data.r2dbc.test.autoconfigure.DataR2dbcTest;
 import org.springframework.boot.liquibase.autoconfigure.LiquibaseAutoConfiguration;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
+import reactor.core.scheduler.Schedulers;
 import ru.yandex.practicum.mymarket.PostgreSqlTestContainerConfiguration;
 import ru.yandex.practicum.mymarket.config.LiquibaseDataSourceConfig;
 import ru.yandex.practicum.mymarket.model.CartItem;
@@ -41,6 +48,8 @@ import ru.yandex.practicum.mymarket.support.DatabaseResetTest;
 @Import({LiquibaseDataSourceConfig.class, PostgreSqlTestContainerConfiguration.class})
 @ActiveProfiles("testcontainers")
 class ItemRepositoryPostgreSqlTest extends DatabaseResetTest {
+
+    private static final Long USER_ID = 1L;
 
     @Autowired
     private ItemRepository itemRepository;
@@ -134,10 +143,10 @@ class ItemRepositoryPostgreSqlTest extends DatabaseResetTest {
     void countsCartItemsOnlyForRequestedIds() {
         Item jacket = save(new Item("Куртка", "Тёплая куртка", "images/jacket.jpg", new BigDecimal("4500.00")));
         Item hat = save(new Item("Шапка", "Тёплая шапка", "images/boots.jpg", new BigDecimal("999.99")));
-        cartItemRepository.save(new CartItem(jacket.getId(), 3)).block();
+        cartItemRepository.save(new CartItem(jacket.getId(), 3, USER_ID)).block();
 
         List<CartItem> positions = cartItemRepository
-                .findAllByItemIdIn(List.of(hat.getId()))
+                .findAllByItemIdInAndUserId(List.of(hat.getId()), USER_ID)
                 .collectList()
                 .block();
 
@@ -153,10 +162,10 @@ class ItemRepositoryPostgreSqlTest extends DatabaseResetTest {
     @Test
     void countsCartItemForRequestedId() {
         Item jacket = save(new Item("Куртка", "Тёплая куртка", "images/jacket.jpg", new BigDecimal("4500.00")));
-        cartItemRepository.save(new CartItem(jacket.getId(), 3)).block();
+        cartItemRepository.save(new CartItem(jacket.getId(), 3, USER_ID)).block();
 
         List<CartItem> positions = cartItemRepository
-                .findAllByItemIdIn(List.of(jacket.getId()))
+                .findAllByItemIdInAndUserId(List.of(jacket.getId()), USER_ID)
                 .collectList()
                 .block();
 
@@ -176,14 +185,17 @@ class ItemRepositoryPostgreSqlTest extends DatabaseResetTest {
     void decreaseCountUpdatesOnlyRequestedCartItem() {
         Item jacket = save(new Item("Куртка", "Тёплая куртка", "images/jacket.jpg", new BigDecimal("4500.00")));
         Item hat = save(new Item("Шапка", "Тёплая шапка", "images/boots.jpg", new BigDecimal("999.99")));
-        cartItemRepository.save(new CartItem(jacket.getId(), 5)).block();
-        cartItemRepository.save(new CartItem(hat.getId(), 4)).block();
+        cartItemRepository.save(new CartItem(jacket.getId(), 5, USER_ID)).block();
+        cartItemRepository.save(new CartItem(hat.getId(), 4, USER_ID)).block();
 
-        assertThat(cartItemRepository.decreaseCount(jacket.getId(), 2).block()).isEqualTo(1);
+        assertThat(cartItemRepository.decreaseCount(jacket.getId(), 2, USER_ID).block())
+                .isEqualTo(1);
 
-        CartItem jacketPosition =
-                cartItemRepository.findByItemId(jacket.getId()).block();
-        CartItem hatPosition = cartItemRepository.findByItemId(hat.getId()).block();
+        CartItem jacketPosition = cartItemRepository
+                .findByItemIdAndUserId(jacket.getId(), USER_ID)
+                .block();
+        CartItem hatPosition =
+                cartItemRepository.findByItemIdAndUserId(hat.getId(), USER_ID).block();
         assertThat(jacketPosition).isNotNull();
         assertThat(jacketPosition.getCount()).isEqualTo(3);
         assertThat(hatPosition).isNotNull();
@@ -201,17 +213,23 @@ class ItemRepositoryPostgreSqlTest extends DatabaseResetTest {
     void deleteIfEmptyRemovesOnlyNonPositivePositions() {
         Item jacket = save(new Item("Куртка", "Тёплая куртка", "images/jacket.jpg", new BigDecimal("4500.00")));
         Item hat = save(new Item("Шапка", "Тёплая шапка", "images/boots.jpg", new BigDecimal("999.99")));
-        cartItemRepository.save(new CartItem(jacket.getId(), 1)).block();
-        cartItemRepository.save(new CartItem(hat.getId(), 3)).block();
+        cartItemRepository.save(new CartItem(jacket.getId(), 1, USER_ID)).block();
+        cartItemRepository.save(new CartItem(hat.getId(), 3, USER_ID)).block();
 
-        cartItemRepository.decreaseCount(jacket.getId(), 2).block();
-        cartItemRepository.decreaseCount(hat.getId(), 1).block();
+        cartItemRepository.decreaseCount(jacket.getId(), 2, USER_ID).block();
+        cartItemRepository.decreaseCount(hat.getId(), 1, USER_ID).block();
 
-        assertThat(cartItemRepository.deleteIfEmpty(jacket.getId()).block()).isEqualTo(1);
-        assertThat(cartItemRepository.deleteIfEmpty(hat.getId()).block()).isZero();
+        assertThat(cartItemRepository.deleteIfEmpty(jacket.getId(), USER_ID).block())
+                .isEqualTo(1);
+        assertThat(cartItemRepository.deleteIfEmpty(hat.getId(), USER_ID).block())
+                .isZero();
 
-        assertThat(cartItemRepository.findByItemId(jacket.getId()).block()).isNull();
-        CartItem hatPosition = cartItemRepository.findByItemId(hat.getId()).block();
+        assertThat(cartItemRepository
+                        .findByItemIdAndUserId(jacket.getId(), USER_ID)
+                        .block())
+                .isNull();
+        CartItem hatPosition =
+                cartItemRepository.findByItemIdAndUserId(hat.getId(), USER_ID).block();
         assertThat(hatPosition).isNotNull();
         assertThat(hatPosition.getCount()).isEqualTo(2);
     }
@@ -226,7 +244,63 @@ class ItemRepositoryPostgreSqlTest extends DatabaseResetTest {
     void decreaseCountReturnsZeroWhenPositionIsAbsent() {
         Item jacket = save(new Item("Куртка", "Тёплая куртка", "images/jacket.jpg", new BigDecimal("4500.00")));
 
-        assertThat(cartItemRepository.decreaseCount(jacket.getId(), 1).block()).isZero();
+        assertThat(cartItemRepository.decreaseCount(jacket.getId(), 1, USER_ID).block())
+                .isZero();
+    }
+
+    /**
+     * Проверяет атомарный UPSERT корзины на реальном PostgreSQL.
+     */
+    @Test
+    void upsertIncreaseCountWorksOnRealPostgreSql() {
+        Item item = save(new Item("Куртка", "Тёплая куртка", "images/jacket.jpg", new BigDecimal("4500.00")));
+
+        cartItemRepository.upsertIncreaseCount(item.getId(), USER_ID).block();
+        cartItemRepository.upsertIncreaseCount(item.getId(), USER_ID).block();
+
+        CartItem position =
+                cartItemRepository.findByItemIdAndUserId(item.getId(), USER_ID).block();
+        assertThat(position).isNotNull();
+        assertThat(position.getCount()).isEqualTo(2);
+    }
+
+    /**
+     * Проверяет, что параллельный UPSERT на реальной PostgreSQL даёт одну строку с суммарным количеством.
+     */
+    @Test
+    void concurrentUpsertIncreaseCountCreatesSingleRowOnRealPostgreSql() throws Exception {
+        Item item = save(new Item("Куртка", "Тёплая куртка", "images/jacket.jpg", new BigDecimal("4500.00")));
+        int attempts = 10;
+        CountDownLatch ready = new CountDownLatch(attempts);
+        CountDownLatch start = new CountDownLatch(1);
+        try (ExecutorService executor = Executors.newFixedThreadPool(attempts)) {
+            List<Future<Void>> futures = new ArrayList<>(attempts);
+            for (int i = 0; i < attempts; i++) {
+                futures.add(executor.submit(() -> {
+                    ready.countDown();
+                    if (!start.await(10, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("Concurrent start was not released");
+                    }
+                    cartItemRepository
+                            .upsertIncreaseCount(item.getId(), USER_ID)
+                            .subscribeOn(Schedulers.boundedElastic())
+                            .block();
+                    return null;
+                }));
+            }
+
+            assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            for (Future<Void> future : futures) {
+                future.get(30, TimeUnit.SECONDS);
+            }
+        }
+
+        List<CartItem> positions =
+                cartItemRepository.findAllSortedByUserId(USER_ID).collectList().block();
+        assertThat(positions).hasSize(1);
+        assertThat(positions.getFirst().getItemId()).isEqualTo(item.getId());
+        assertThat(positions.getFirst().getCount()).isEqualTo(attempts);
     }
 
     /**

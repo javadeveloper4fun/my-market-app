@@ -4,11 +4,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import reactor.core.scheduler.Schedulers;
 import ru.yandex.practicum.mymarket.dto.CartPage;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.model.CartItem;
@@ -33,6 +41,17 @@ import ru.yandex.practicum.mymarket.support.DatabaseResetTest;
 @ActiveProfiles("test")
 class CartServiceTest extends DatabaseResetTest {
 
+    private static final Long USER_ID = 1L;
+
+    @BeforeEach
+    void seedUser() {
+        databaseClient
+                .sql("MERGE INTO users (id, username, password_hash, enabled, created_at) "
+                        + "KEY(id) VALUES (1, 'test', '{noop}p', true, CURRENT_TIMESTAMP)")
+                .then()
+                .block();
+    }
+
     @Autowired
     private CartService cartService;
 
@@ -46,10 +65,10 @@ class CartServiceTest extends DatabaseResetTest {
     void getCartReturnsItemsAndTotal() {
         Item item1 = saveItem("Тестовая куртка", "Зимняя", "1000");
         Item item2 = saveItem("Тестовый рюкзак", "Городской", "2000");
-        cartItemRepository.save(new CartItem(item1.getId(), 2)).block();
-        cartItemRepository.save(new CartItem(item2.getId(), 1)).block();
+        cartItemRepository.save(new CartItem(item1.getId(), 2, USER_ID)).block();
+        cartItemRepository.save(new CartItem(item2.getId(), 1, USER_ID)).block();
 
-        CartPage cart = cartService.getCart().block();
+        CartPage cart = cartService.getCart(1L).block();
 
         assertThat(cart.items()).hasSize(2);
         assertThat(cart.items())
@@ -59,8 +78,30 @@ class CartServiceTest extends DatabaseResetTest {
     }
 
     @Test
+    void differentUsersCanHaveSameItemInCart() {
+        Item item = saveItem("Common item", "d", "500");
+        databaseClient
+                .sql("MERGE INTO users (id, username, password_hash, enabled, created_at) "
+                        + "KEY(id) VALUES (2, 'test2', '{noop}p', true, CURRENT_TIMESTAMP)")
+                .then()
+                .block();
+
+        cartService.applyAction(item.getId(), Action.PLUS, 1L).block();
+        cartService.applyAction(item.getId(), Action.PLUS, 2L).block();
+
+        CartItem first =
+                cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block();
+        CartItem second =
+                cartItemRepository.findByItemIdAndUserId(item.getId(), 2L).block();
+        assertThat(first).isNotNull();
+        assertThat(second).isNotNull();
+        assertThat(first.getCount()).isEqualTo(1);
+        assertThat(second.getCount()).isEqualTo(1);
+    }
+
+    @Test
     void getCartEmptyReturnsZeroTotal() {
-        CartPage cart = cartService.getCart().block();
+        CartPage cart = cartService.getCart(1L).block();
 
         assertThat(cart.items()).isEmpty();
         assertThat(cart.total()).isEqualTo(0L);
@@ -70,9 +111,10 @@ class CartServiceTest extends DatabaseResetTest {
     void applyActionPlusAddsNew() {
         Item item = saveItem("Тестовый товар", "Описание", "1500");
 
-        cartService.applyAction(item.getId(), Action.PLUS).block();
+        cartService.applyAction(item.getId(), Action.PLUS, 1L).block();
 
-        CartItem saved = cartItemRepository.findByItemId(item.getId()).block();
+        CartItem saved =
+                cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block();
         assertThat(saved).isNotNull();
         assertThat(saved.getCount()).isEqualTo(1);
     }
@@ -91,22 +133,61 @@ class CartServiceTest extends DatabaseResetTest {
     void applyActionPlusTwiceIncrementsInsteadOfInsertingSecondRow() {
         Item item = saveItem("Тестовый товар", "Описание", "1500");
 
-        cartService.applyAction(item.getId(), Action.PLUS).block();
-        cartService.applyAction(item.getId(), Action.PLUS).block();
+        cartService.applyAction(item.getId(), Action.PLUS, 1L).block();
+        cartService.applyAction(item.getId(), Action.PLUS, 1L).block();
 
         List<CartItem> all = cartItemRepository.findAll().collectList().block();
         assertThat(all).hasSize(1);
         assertThat(all.getFirst().getCount()).isEqualTo(2);
     }
 
+    /**
+     * Проверяет, что параллельные добавления одного товара одним пользователем
+     * дают одну строку с суммарным количеством.
+     */
+    @Test
+    void concurrentPlusCreatesSingleRowWithTotalCount() throws Exception {
+        Item item = saveItem("Тестовый товар", "Описание", "1500");
+        int attempts = 10;
+        CountDownLatch ready = new CountDownLatch(attempts);
+        CountDownLatch start = new CountDownLatch(1);
+        try (ExecutorService executor = Executors.newFixedThreadPool(attempts)) {
+            List<Future<Void>> futures = new ArrayList<>(attempts);
+            for (int i = 0; i < attempts; i++) {
+                futures.add(executor.submit(() -> {
+                    ready.countDown();
+                    if (!start.await(10, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("Concurrent start was not released");
+                    }
+                    cartService
+                            .applyAction(item.getId(), Action.PLUS, USER_ID)
+                            .subscribeOn(Schedulers.boundedElastic())
+                            .block();
+                    return null;
+                }));
+            }
+
+            assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            for (Future<Void> future : futures) {
+                future.get(30, TimeUnit.SECONDS);
+            }
+        }
+
+        List<CartItem> all = cartItemRepository.findAll().collectList().block();
+        assertThat(all).hasSize(1);
+        assertThat(all.getFirst().getCount()).isEqualTo(attempts);
+    }
+
     @Test
     void applyActionPlusIncrementsExisting() {
         Item item = saveItem("Тестовый товар", "Описание", "1500");
-        cartItemRepository.save(new CartItem(item.getId(), 2)).block();
+        cartItemRepository.save(new CartItem(item.getId(), 2, 1L)).block();
 
-        cartService.applyAction(item.getId(), Action.PLUS).block();
+        cartService.applyAction(item.getId(), Action.PLUS, 1L).block();
 
-        CartItem saved = cartItemRepository.findByItemId(item.getId()).block();
+        CartItem saved =
+                cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block();
         assertThat(saved).isNotNull();
         assertThat(saved.getCount()).isEqualTo(3);
     }
@@ -114,11 +195,12 @@ class CartServiceTest extends DatabaseResetTest {
     @Test
     void applyActionMinusDecrements() {
         Item item = saveItem("Тестовый товар", "Описание", "1500");
-        cartItemRepository.save(new CartItem(item.getId(), 3)).block();
+        cartItemRepository.save(new CartItem(item.getId(), 3, USER_ID)).block();
 
-        cartService.applyAction(item.getId(), Action.MINUS).block();
+        cartService.applyAction(item.getId(), Action.MINUS, 1L).block();
 
-        CartItem saved = cartItemRepository.findByItemId(item.getId()).block();
+        CartItem saved =
+                cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block();
         assertThat(saved).isNotNull();
         assertThat(saved.getCount()).isEqualTo(2);
     }
@@ -126,28 +208,30 @@ class CartServiceTest extends DatabaseResetTest {
     @Test
     void applyActionMinusRemovesWhenZero() {
         Item item = saveItem("Тестовый товар", "Описание", "1500");
-        cartItemRepository.save(new CartItem(item.getId(), 1)).block();
+        cartItemRepository.save(new CartItem(item.getId(), 1, 1L)).block();
 
-        cartService.applyAction(item.getId(), Action.MINUS).block();
+        cartService.applyAction(item.getId(), Action.MINUS, 1L).block();
 
-        assertThat(cartItemRepository.findByItemId(item.getId()).block()).isNull();
+        assertThat(cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block())
+                .isNull();
     }
 
     @Test
     void applyActionDeleteRemoves() {
         Item item = saveItem("Тестовый товар", "Описание", "1500");
-        cartItemRepository.save(new CartItem(item.getId(), 5)).block();
+        cartItemRepository.save(new CartItem(item.getId(), 5, USER_ID)).block();
 
-        cartService.applyAction(item.getId(), Action.DELETE).block();
+        cartService.applyAction(item.getId(), Action.DELETE, 1L).block();
 
-        assertThat(cartItemRepository.findByItemId(item.getId()).block()).isNull();
+        assertThat(cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block())
+                .isNull();
     }
 
     @Test
     void applyActionDeleteNonExistentIsNoOp() {
-        cartService.applyAction(999L, Action.DELETE).block();
+        cartService.applyAction(999L, Action.DELETE, 1L).block();
 
-        assertThat(cartItemRepository.findByItemId(999L).block()).isNull();
+        assertThat(cartItemRepository.findByItemIdAndUserId(999L, 1L).block()).isNull();
     }
 
     /**
@@ -156,7 +240,7 @@ class CartServiceTest extends DatabaseResetTest {
      */
     @Test
     void applyActionPlusOnMissingItemFails() {
-        assertThatThrownBy(() -> cartService.applyAction(999L, Action.PLUS).block())
+        assertThatThrownBy(() -> cartService.applyAction(999L, Action.PLUS, 1L).block())
                 .isInstanceOf(ItemNotFoundException.class);
     }
 

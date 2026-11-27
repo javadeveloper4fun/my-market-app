@@ -1,21 +1,15 @@
 package ru.yandex.practicum.payments.service;
 
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.stereotype.Service;
 import ru.yandex.practicum.payments.config.PaymentsProperties;
 
-/**
- * Баланс счёта в памяти.
- *
- * <p>Списание выполняется через CAS-цикл {@link AtomicLong#compareAndSet}: два
- * одновременных платежа не могут оба увидеть достаточный баланс и увести его
- * в минус. Блокировка здесь не нужна — операция короткая и не содержит
- * ввода-вывода.
- */
 @Service
 public class BalanceAccount {
 
-    private final AtomicLong balance;
+    private final ConcurrentMap<Long, AtomicLong> balances = new ConcurrentHashMap<>();
     private final long initialBalance;
 
     public BalanceAccount(PaymentsProperties properties) {
@@ -23,41 +17,21 @@ public class BalanceAccount {
             throw new IllegalArgumentException("Начальный баланс не может быть отрицательным");
         }
         this.initialBalance = properties.initialBalance();
-        this.balance = new AtomicLong(initialBalance);
     }
 
-    /**
-     * Возвращает баланс к начальному значению.
-     *
-     * <p>Нужно только тестам: сервис не хранит историю, и без сброса тесты
-     * зависели бы от порядка выполнения. Публичного HTTP-эндпоинта для
-     * сброса нет — контракт задания описывает только баланс и платёж.
-     */
     public void reset() {
-        balance.set(initialBalance);
+        balances.clear();
     }
 
-    /**
-     * Возвращает текущий баланс.
-     *
-     * @return баланс в целых рублях
-     */
-    public long getBalance() {
-        return balance.get();
+    public long getBalance(long userId) {
+        return balanceFor(userId).get();
     }
 
-    /**
-     * Списывает сумму, если средств достаточно.
-     *
-     * @param amount сумма в целых рублях, должна быть положительной
-     * @return остаток после успешного списания
-     * @throws InvalidAmountException если сумма неположительна
-     * @throws InsufficientFundsException если средств недостаточно
-     */
-    public long withdraw(long amount) {
+    public long withdraw(long userId, long amount) {
         if (amount <= 0) {
             throw new InvalidAmountException();
         }
+        AtomicLong balance = balanceFor(userId);
         while (true) {
             long current = balance.get();
             if (current < amount) {
@@ -68,5 +42,9 @@ public class BalanceAccount {
                 return remaining;
             }
         }
+    }
+
+    private AtomicLong balanceFor(long userId) {
+        return balances.computeIfAbsent(userId, ignored -> new AtomicLong(initialBalance));
     }
 }

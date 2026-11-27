@@ -5,9 +5,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.reactive.TransactionalOperator;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.cache.CachedItem;
@@ -21,7 +20,8 @@ import ru.yandex.practicum.mymarket.repository.ItemRepository;
 /**
  * Корзина покупателя.
  *
- * <p>Позиции и товары хранятся в разных таблицах, и в блокирующей версии они
+ * <p>Все операции выполняются в контексте конкретного пользователя ({@code userId}).
+ * Позиции и товары хранятся в разных таблицах, и в блокирующей версии они
  * читались одним {@code join fetch}. На реактивном стеке это два запроса: сначала
  * позиции, затем товары по найденным идентификаторам. Порядок позиций
  * корзины сохраняется тем, что итоговый список собирается перебором позиций, а
@@ -34,24 +34,27 @@ public class CartService {
     private final CartItemRepository cartItemRepository;
     private final ItemRepository itemRepository;
     private final ItemCache itemCache;
+    private final TransactionalOperator transactionalOperator;
 
-    public CartService(CartItemRepository cartItemRepository, ItemRepository itemRepository, ItemCache itemCache) {
+    public CartService(
+            CartItemRepository cartItemRepository,
+            ItemRepository itemRepository,
+            ItemCache itemCache,
+            TransactionalOperator transactionalOperator) {
         this.cartItemRepository = cartItemRepository;
         this.itemRepository = itemRepository;
         this.itemCache = itemCache;
+        this.transactionalOperator = transactionalOperator;
     }
 
     /**
-     * Возвращает корзину покупателя.
+     * Возвращает корзину пользователя.
      *
-     * <p>Итоговая сумма считается по усечённым длинным ценам, как и на витрине:
-     * {@link ItemDto} уже хранит целые рубли, поэтому дополнительного округления
-     * не происходит.
-     *
+     * @param userId идентификатор пользователя
      * @return корзина со списком позиций и суммой
      */
-    public Mono<CartPage> getCart() {
-        return cartItemRepository.findAllSorted().collectList().flatMap(cartItems -> {
+    public Mono<CartPage> getCart(Long userId) {
+        return cartItemRepository.findAllSortedByUserId(userId).collectList().flatMap(cartItems -> {
             if (cartItems.isEmpty()) {
                 return Mono.just(new CartPage(List.of(), 0L));
             }
@@ -63,15 +66,9 @@ public class CartService {
     /**
      * Читает метаданные товаров корзины из кеша, а недостающие докручивает из базы.
      *
-     * <p>Тема 6/7 «Использование Spring Data Redis в качестве кеша», урок 1/7:
-     * cache-aside — приложение само читает кеш и при промахе идёт в источник.
-     * Количество в корзине здесь не участвует: оно меняется чаще каталога и
+     * <p>Количество в корзине здесь не участвует: оно меняется чаще каталога и
      * всегда читается из {@code cart_item}, поэтому в кеше лежит только карточка
      * товара без {@code count}.
-     *
-     * <p>Порядок операций важен: сначала читаем кеш по всем идентификаторам,
-     * затем одним запросом дочитываем недостающие товары и кладём их в кеш.
-     * Запрос по одному отсутствующему товару дал бы N+1 вместо одного пакетного.
      *
      * @param itemIds идентификаторы товаров в корзине
      * @return метаданные товаров по идентификаторам
@@ -110,45 +107,36 @@ public class CartService {
     }
 
     /**
-     * Применяет действие (увеличить/уменьшить/удалить) к позиции товара в корзине.
+     * Применяет действие (увеличить/уменьшить/удалить) к позиции товара в корзине пользователя.
      *
-     * <p>Изменения выполняются атомарными SQL-операциями, чтобы параллельные
-     * запросы не теряли обновления количества. Для добавления новой позиции при
-     * гонке используется уникальность {@code item_id}: при конфликте вставки
-     * количество увеличивается повторно.
+     * <p>Изменения выполняются SQL-операциями с фильтром по user_id. Добавление
+     * товара выполняется одним атомарным UPSERT по {@code (item_id, user_id)},
+     * поэтому параллельные запросы не теряют обновления количества.
      *
      * @param itemId идентификатор товара
      * @param action действие над позицией
+     * @param userId идентификатор пользователя
      * @return завершение операции
      */
-    @Transactional
-    public Mono<Void> applyAction(long itemId, Action action) {
+    public Mono<Void> applyAction(long itemId, Action action, Long userId) {
         return switch (action) {
-            case PLUS -> increase(itemId);
-            case MINUS -> decrease(itemId);
-            case DELETE -> cartItemRepository.deleteByItemId(itemId).then();
+            case PLUS -> transactionalOperator.transactional(increase(itemId, userId));
+            case MINUS -> transactionalOperator.transactional(decrease(itemId, userId));
+            case DELETE -> cartItemRepository.deleteByItemId(itemId, userId).then();
         };
     }
 
-    private Mono<Void> increase(long itemId) {
-        return cartItemRepository.increaseCount(itemId).flatMap(updated -> {
-            if (updated > 0) {
-                return Mono.empty();
-            }
-            return itemRepository
-                    .findById(itemId)
-                    .switchIfEmpty(Mono.error(() -> new ItemNotFoundException(itemId)))
-                    .then(cartItemRepository.save(new CartItem(itemId, 1)).then())
-                    .onErrorResume(
-                            DuplicateKeyException.class,
-                            e -> cartItemRepository.increaseCount(itemId).then());
-        });
+    private Mono<Void> increase(long itemId, Long userId) {
+        return itemRepository
+                .findById(itemId)
+                .switchIfEmpty(Mono.error(() -> new ItemNotFoundException(itemId)))
+                .then(cartItemRepository.upsertIncreaseCount(itemId, userId).then());
     }
 
-    private Mono<Void> decrease(long itemId) {
+    private Mono<Void> decrease(long itemId, Long userId) {
         return cartItemRepository
-                .decreaseCount(itemId, 1)
-                .then(cartItemRepository.deleteIfEmpty(itemId))
+                .decreaseCount(itemId, 1, userId)
+                .then(cartItemRepository.deleteIfEmpty(itemId, userId))
                 .then();
     }
 

@@ -14,6 +14,15 @@ sourceSets {
 
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
+    // Спринт 8 — Spring Security: аутентификация пользователей (form login) и
+    // OAuth2 Client Credentials для вызовов payments-service.
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
+    // thymeleaf-extras-springsecurity для sec:authorize в шаблонах Thymeleaf.
+    implementation 'org.thymeleaf.extras:thymeleaf-extras-springsecurity6'
+    // Тесты Spring Security: WebTestClient + mockUser/mockOAuth2Client/csrf.
+    testImplementation 'org.springframework.security:spring-security-test'
+
     // Спринт 7 — кеш товаров. Реактивный клиент Redis работает на Lettuce и не
     // блокирует event loop; блокирующий RedisTemplate в WebFlux не используется.
     implementation 'org.springframework.boot:spring-boot-starter-data-redis-reactive'

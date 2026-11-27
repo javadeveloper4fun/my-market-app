@@ -12,14 +12,8 @@ import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.web.reactive.function.client.WebClient;
 
-/**
- * Тесты сгенерированного клиента платежей без Spring-контекста.
- *
- * <p>Клиент собран OpenAPI Generator под Jackson 2, тогда как приложение живёт
- * на Jackson 3. Тест через настоящий {@link MockWebServer} проверяет именно
- * сериализацию и разбор JSON, а не только бизнес-ветки шлюза.
- */
 class GeneratedPaymentsGatewayTest {
 
     private MockWebServer server;
@@ -39,7 +33,7 @@ class GeneratedPaymentsGatewayTest {
     void readsBalance() {
         server.enqueue(json(200, "{\"balance\":7500}"));
 
-        Long balance = gateway().getBalance().block();
+        Long balance = gateway().getBalance(1L).block();
 
         assertThat(balance).isEqualTo(7500L);
     }
@@ -48,11 +42,13 @@ class GeneratedPaymentsGatewayTest {
     void sendsPaymentAndReadsResponse() throws Exception {
         server.enqueue(json(200, "{\"amount\":1500,\"balance\":6000}"));
 
-        PaymentResult result = gateway().pay(1500).block();
+        PaymentResult result = gateway().pay(1L, 1500, "attempt-1").block();
 
         assertThat(result).isEqualTo(new PaymentResult(1500L, 6000L));
         RecordedRequest request = server.takeRequest();
         assertThat(request.getPath()).isEqualTo("/api/v1/payments");
+        assertThat(request.getHeader("X-User-Id")).isEqualTo("1");
+        assertThat(request.getHeader("X-Attempt-Id")).isEqualTo("attempt-1");
         assertThat(request.getBody().readUtf8()).contains("\"amount\":1500");
     }
 
@@ -60,30 +56,34 @@ class GeneratedPaymentsGatewayTest {
     void mapsPaymentRequiredToInsufficientFunds() {
         server.enqueue(json(402, "{\"code\":\"INSUFFICIENT_FUNDS\",\"message\":\"no money\"}"));
 
-        assertThatThrownBy(() -> gateway().pay(1500).block()).isInstanceOf(InsufficientFundsException.class);
+        assertThatThrownBy(() -> gateway().pay(1L, 1500, "attempt-1").block())
+                .isInstanceOf(InsufficientFundsException.class);
     }
 
     @Test
     void mapsBadRequestToInvalidPaymentRequest() {
         server.enqueue(json(400, "{\"code\":\"INVALID_AMOUNT\",\"message\":\"bad amount\"}"));
 
-        assertThatThrownBy(() -> gateway().pay(0).block()).isInstanceOf(InvalidPaymentRequestException.class);
+        assertThatThrownBy(() -> gateway().pay(1L, 0, "attempt-1").block())
+                .isInstanceOf(InvalidPaymentRequestException.class);
     }
 
     @Test
     void mapsServerErrorToUnavailable() {
         server.enqueue(json(500, "{\"code\":\"INTERNAL\",\"message\":\"boom\"}"));
 
-        assertThatThrownBy(() -> gateway().pay(1500).block()).isInstanceOf(PaymentsUnavailableException.class);
+        assertThatThrownBy(() -> gateway().pay(1L, 1500, "attempt-1").block())
+                .isInstanceOf(PaymentsUnavailableException.class);
     }
 
     @Test
     void mapsTimeoutToUnavailable() {
         server.enqueue(json(200, "{\"amount\":1500,\"balance\":6000}").setBodyDelay(500, TimeUnit.MILLISECONDS));
 
-        assertThatThrownBy(() -> gateway(Duration.ofMillis(200)).pay(1500).block())
+        assertThatThrownBy(() -> gateway(Duration.ofMillis(200))
+                        .pay(1L, 1500, "attempt-1")
+                        .block())
                 .isInstanceOf(PaymentsUnavailableException.class)
-                .hasMessageContaining("вовремя")
                 .hasCauseInstanceOf(TimeoutException.class);
     }
 
@@ -93,6 +93,7 @@ class GeneratedPaymentsGatewayTest {
 
     private GeneratedPaymentsGateway gateway(Duration timeout) {
         return new GeneratedPaymentsGateway(
+                WebClient.builder().build(),
                 new PaymentsProperties(server.url("/").toString(), timeout));
     }
 

@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<html lang="en" xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
 
 <head>
     <meta charset="utf-8">
@@ -21,15 +22,34 @@
                 <h2>
                     <span class="badge text-bg-success">Витрина магазина</span>
                 </h2>
-                <a href="/orders" class="btn btn-secondary ms-auto bi bi-file-earmark-text"> Заказы</a>
-                <a href="/cart/items" class="btn btn-secondary bi bi-cart4"> Корзина</a>
+                <a href="/orders" class="btn btn-secondary ms-auto bi bi-file-earmark-text"
+                   th:if="${isAuthenticated}">Заказы</a>
+                <a href="/cart/items" class="btn btn-secondary bi bi-cart4"
+                   th:if="${isAuthenticated}">Корзина</a>
                 <a href="/items" class="btn btn-secondary bi bi-arrow-left-square"> Главная</a>
+                <a href="/login" class="btn btn-outline-primary ms-auto"
+                   th:unless="${isAuthenticated}">Войти</a>
+                <form method="post" action="/logout" class="d-inline no-ajax"
+                      th:if="${isAuthenticated}">
+                    <input type="hidden" name="_csrf" th:value="${_csrf.token}"/>
+                    <button type="submit" class="btn btn-outline-danger">Выйти</button>
+                </form>
+                <div th:unless="${isAuthenticated}" class="text-danger ms-auto">
+                    Заказ доступен только после входа.
+                </div>
             </div>
         </div>
     </div>
     <div class="row p-2">
         <div class="col">
             <h2 th:text="${'Заказ №'+order.id()}"></h2>
+            <span th:switch="${order.status()}">
+                <span th:case="'PAID'" class="badge text-bg-success">Оплачен</span>
+                <span th:case="'AWAITING_PAYMENT'" class="badge text-bg-warning">Ожидает оплаты</span>
+                <span th:case="'INSUFFICIENT_FUNDS'" class="badge text-bg-danger">Недостаточно средств</span>
+                <span th:case="'PAYMENT_TIMEOUT'" class="badge text-bg-warning">Ожидает подтверждения оплаты</span>
+                <span th:case="*" class="badge text-bg-secondary" th:text="${order.status()}"></span>
+            </span>
         </div>
     </div>
     <div class="row p-2" th:each="item : ${order.items()}">

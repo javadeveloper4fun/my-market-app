@@ -1,0 +1,85 @@
+# ===================================================================
+# Стартовые демо-пользователи (Спринт 8).
+#
+# context: seed — changeset применяется при обычном запуске (контекст
+# не задан в application.yml). В тестовом профиле контекст test, и
+# этот changeset пропускается: тесты создают своих пользователей.
+#
+# Пароли: "password" у обоих пользователей. Хранятся только BCrypt-хеши.
+# ===================================================================
+
+databaseChangeLog:
+
+  - changeSet:
+      id: "11"
+      author: "student"
+      context: "seed"
+      comment: "Демо-пользователи"
+      onFailMessage: "В таблице users уже есть пользователи: повторное наполнение привело бы к дублям"
+      preConditions:
+        - sqlCheck:
+            expectedResult: 0
+            sql: SELECT COUNT(*) FROM users
+      changes:
+        - insert:
+            tableName: users
+            columns:
+              - column:
+                  name: username
+                  value: "user1"
+              - column:
+                  name: password_hash
+                  value: "$2b$10$cKJIiYBG2i1GgfUUv2jQ4unAJ8lSV7kO8FMVH6DRjdElPo0PpWbKi"
+              - column:
+                  name: enabled
+                  value: true
+              - column:
+                  name: created_at
+                  value: "2026-01-01 00:00:00"
+        - insert:
+            tableName: users
+            columns:
+              - column:
+                  name: username
+                  value: "user2"
+              - column:
+                  name: password_hash
+                  value: "$2b$10$jgn/a/7JuAcw8KqmKDe8buM.va7jEUZR5GtAJ.uJpWR6DbJpeGW.m"
+              - column:
+                  name: enabled
+                  value: true
+              - column:
+                  name: created_at
+                  value: "2026-01-01 00:00:00"
+      rollback:
+        - delete:
+            tableName: users
+            where: username in ('user1', 'user2')
+
+  - changeSet:
+      id: "12"
+      author: "student"
+      context: "seed"
+      comment: "Роли демо-пользователей"
+      changes:
+        - insert:
+            tableName: user_roles
+            columns:
+              - column:
+                  name: user_id
+                  value: "1"
+              - column:
+                  name: role
+                  value: "ROLE_USER"
+        - insert:
+            tableName: user_roles
+            columns:
+              - column:
+                  name: user_id
+                  value: "2"
+              - column:
+                  name: role
+                  value: "ROLE_USER"
+      rollback:
+        - delete:
+            tableName: user_roles

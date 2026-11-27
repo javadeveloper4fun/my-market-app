@@ -1,0 +1,99 @@
+# ===================================================================
+# Таблицы пользователей и их ролей для аутентификации (Спринт 8).
+#
+# username уникален: вход по логину, и два пользователя не могут иметь
+# одинаковое имя. password_hash хранит только BCrypt-хеш пароля —
+# пароль в открытом виде в БД не фигурирует.
+#
+# Режим preConditions по умолчанию — HALT.
+# ===================================================================
+
+databaseChangeLog:
+
+  - changeSet:
+      id: "9"
+      author: "student"
+      comment: "Таблица пользователей"
+      onFailMessage: "Таблица users уже существует: база создана в обход Liquibase"
+      preConditions:
+        - not:
+            - tableExists:
+                tableName: users
+      changes:
+        - createTable:
+            tableName: users
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_users
+                    nullable: false
+              - column:
+                  name: username
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: uq_users_username
+              - column:
+                  name: password_hash
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: enabled
+                  type: BOOLEAN
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropTable:
+            tableName: users
+
+  - changeSet:
+      id: "10"
+      author: "student"
+      comment: "Таблица ролей пользователей"
+      onFailMessage: "Таблица user_roles уже существует: база создана в обход Liquibase"
+      preConditions:
+        - not:
+            - tableExists:
+                tableName: user_roles
+      changes:
+        - createTable:
+            tableName: user_roles
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_user_roles
+                    nullable: false
+              - column:
+                  name: user_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: role
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+        - addForeignKeyConstraint:
+            baseTableName: user_roles
+            baseColumnNames: user_id
+            referencedTableName: users
+            referencedColumnNames: id
+            constraintName: fk_user_roles_user
+      rollback:
+        - dropTable:
+            tableName: user_roles

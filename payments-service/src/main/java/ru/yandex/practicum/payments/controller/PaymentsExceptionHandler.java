@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.bind.support.WebExchangeBindException;
 import org.springframework.web.server.ServerWebInputException;
 import ru.yandex.practicum.payments.model.ErrorResponse;
+import ru.yandex.practicum.payments.service.AttemptConflictException;
 import ru.yandex.practicum.payments.service.InsufficientFundsException;
 import ru.yandex.practicum.payments.service.InvalidAmountException;
 
@@ -25,6 +26,12 @@ public class PaymentsExceptionHandler {
     public ResponseEntity<ErrorResponse> handleInsufficientFunds(InsufficientFundsException exception) {
         return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED)
                 .body(new ErrorResponse("INSUFFICIENT_FUNDS", exception.getMessage()));
+    }
+
+    @ExceptionHandler(AttemptConflictException.class)
+    public ResponseEntity<ErrorResponse> handleAttemptConflict(AttemptConflictException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("ATTEMPT_CONFLICT", exception.getMessage()));
     }
 
     @ExceptionHandler(InvalidAmountException.class)

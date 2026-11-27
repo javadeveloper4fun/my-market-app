@@ -8,17 +8,11 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.relational.core.mapping.Table;
 
 /**
- * Позиция корзины: товар и его количество.
+ * Позиция корзины: товар, его количество и владелец (пользователь).
  *
  * <p>Связь с товаром хранится идентификатором {@code itemId}, а не ссылкой на
- * {@link Item}. В R2DBC нет ленивой загрузки и объектного графа: вложенная
- * ссылка маппилась бы в колонку по {@code @Id} вложенного объекта, но при
- * записи Spring Data попытался бы сохранить и его тоже. Плоский
- * {@code itemId} делает запись предсказуемой.
- *
- * <p>Данные для страницы корзины добираются вторым запросом по идентификаторам,
- * а не выборкой с join — почему так, объяснено в
- * {@link ru.yandex.practicum.mymarket.repository.CartItemRepository}.
+ * {@link Item}. Владелец позиции — {@code userId} — нужен для персонификации
+ * корзины: каждый пользователь видит только свои позиции.
  */
 @Table("cart_item")
 @NoArgsConstructor
@@ -29,6 +23,8 @@ public class CartItem {
 
     @Id
     private Long id;
+
+    private Long userId;
 
     private Long itemId;
 
@@ -43,5 +39,18 @@ public class CartItem {
     public CartItem(Long itemId, int count) {
         this.itemId = itemId;
         this.count = count;
+    }
+
+    /**
+     * Создаёт позицию корзины для пользователя и товара.
+     *
+     * @param itemId идентификатор товара
+     * @param count  количество товара в корзине
+     * @param userId идентификатор пользователя — владельца позиции
+     */
+    public CartItem(Long itemId, int count, Long userId) {
+        this.itemId = itemId;
+        this.count = count;
+        this.userId = userId;
     }
 }

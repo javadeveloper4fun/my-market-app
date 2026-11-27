@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<html lang="en" xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
 
 <head>
     <meta charset="utf-8">
@@ -16,9 +17,18 @@
                     <h2>
                         <span class="badge text-bg-success">Добавление товара</span>
                     </h2>
-                    <a href="/orders" class="btn btn-secondary ms-auto bi bi-file-earmark-text"> Заказы</a>
-                    <a href="/cart/items" class="btn btn-secondary bi bi-cart4"> Корзина</a>
-                    <a href="/items" class="btn btn-secondary bi bi-arrow-left-square"> Главная</a>
+                    <a href="/orders" class="btn btn-secondary ms-auto bi bi-file-earmark-text"
+                       th:if="${isAuthenticated}"> Заказы</a>
+                    <a href="/cart/items" class="btn btn-secondary bi bi-cart4"
+                       th:if="${isAuthenticated}"> Корзина</a>
+                    <a href="/items" class="btn btn-secondary bi bi-arrow-left-square"> На главную</a>
+                    <a href="/login" class="btn btn-outline-primary"
+                       th:unless="${isAuthenticated}">Войти</a>
+                    <form method="post" action="/logout" class="d-inline no-ajax"
+                          th:if="${isAuthenticated}">
+                        <input type="hidden" name="_csrf" th:value="${_csrf.token}"/>
+                        <button type="submit" class="btn btn-outline-danger">Выйти</button>
+                    </form>
                 </div>
             </div>
         </div>
@@ -38,7 +48,8 @@
                     <div class="card-body">
                         <!-- enctype обязателен: без него браузер отправит форму
                              как обычные данные, и файл картинки не дойдёт. -->
-                        <form th:action="@{/items/new}" method="post" enctype="multipart/form-data">
+                        <form id="new-item-form" th:action="@{/items/new}" method="post" enctype="multipart/form-data">
+                            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
                             <div class="mb-3">
                                 <label class="form-label" for="title">Название</label>
                                 <input class="form-control" type="text" id="title" name="title"
@@ -67,6 +78,32 @@
             </div>
         </div>
     </div>
+    <script>
+        document.getElementById('new-item-form').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            const form = e.currentTarget;
+            const formData = new FormData(form);
+            try {
+                const response = await fetch(form.action, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-XSRF-TOKEN': formData.get('_csrf')
+                    }
+                });
+                if (response.redirected) {
+                    window.location.href = response.url;
+                    return;
+                }
+                const html = await response.text();
+                document.open();
+                document.write(html);
+                document.close();
+            } catch (err) {
+                form.submit();
+            }
+        });
+    </script>
 </body>
 
 </html>

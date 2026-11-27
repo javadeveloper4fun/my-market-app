@@ -11,93 +11,70 @@ import ru.yandex.practicum.mymarket.model.CartItem;
 /**
  * Хранилище позиций корзины покупателя.
  *
- * <p>Метода {@code findAllWithItem} здесь нет, и это следствие перехода на
- * R2DBC. В JPA он существовал, чтобы одним {@code join fetch} не плодить запрос
- * на каждую позицию. В R2DBC такого способа нет: {@code findAll()} отдаёт
- * плоские позиции, а данные товара добираются вторым запросом по
- * идентификаторам. Два запроса на всю корзину вместо одного на позицию дешевле,
- * чем был бы N+1.
- *
- * <p>Количества для витрины берутся не проекцией, а обычной выборкой позиций по
- * идентификаторам. Интерфейсные проекции в R2DBC сопоставляют столбцы по
- * стратегии именования, и при несовпадении имени геттер возвращает {@code null}
- * без всякой ошибки — на витрине это выглядело бы как «товар не в корзине».
- * Конструкторное выражение {@code select new ...} недоступно: запрос уходит в СУБД
- * дословно и отвергается как некорректный синтаксис.
+ * <p>Все операции фильтруются по {@code user_id}: пользователь может видеть и
+ * менять только свои позиции корзины. Это защита от IDOR — нельзя получить или
+ * изменить чужую позицию по идентификатору товара.
  */
-public interface CartItemRepository extends ReactiveCrudRepository<CartItem, Long> {
+public interface CartItemRepository extends ReactiveCrudRepository<CartItem, Long>, CartItemRepositoryCustom {
 
     /**
-     * Возвращает позицию корзины по товару.
+     * Возвращает позицию корзины по товару и пользователю.
      *
      * @param itemId идентификатор товара
-     * @return позиция корзины или пустой результат, если товара в корзине нет
+     * @param userId идентификатор пользователя
+     * @return позиция корзины или пустой результат
      */
-    Mono<CartItem> findByItemId(Long itemId);
+    Mono<CartItem> findByItemIdAndUserId(Long itemId, Long userId);
 
     /**
-     * Возвращает позиции корзины по переданным товарам.
-     *
-     * <p>Выборка намеренно ограничена списком идентификаторов: без него пришлось
-     * бы читать всю корзину, тогда как на витрине нужны только товары текущей
-     * страницы.
+     * Возвращает позиции корзины по переданным товарам и пользователю.
      *
      * @param itemIds идентификаторы товаров
-     * @return поток позиций этих товаров
+     * @param userId  идентификатор пользователя
+     * @return поток позиций этих товаров пользователя
      */
-    Flux<CartItem> findAllByItemIdIn(Collection<Long> itemIds);
+    Flux<CartItem> findAllByItemIdInAndUserId(Collection<Long> itemIds, Long userId);
 
     /**
-     * Возвращает все позиции корзины.
+     * Возвращает все позиции корзины пользователя.
      *
-     * <p>Сортировка по идентификатору: {@code id} автоинкрементный, поэтому
-     * позиции выводятся в порядке добавления — свежие первыми. Без ORDER BY
-     * порядок выдачи БД неопределён, и при изменении количества через плюс
-     * позиция может перемещаться в конец списка.
-     *
-     * @return поток позиций корзины
+     * @param userId идентификатор пользователя
+     * @return поток позиций корзины пользователя
      */
-    @Query("SELECT * FROM cart_item ORDER BY id")
-    Flux<CartItem> findAllSorted();
-
-    /**
-     * Увеличивает количество товара в позиции корзины на единицу.
-     *
-     * @param itemId идентификатор товара
-     * @return число изменённых строк
-     */
-    @Modifying
-    @Query("UPDATE cart_item SET count = count + 1 WHERE item_id = :itemId")
-    Mono<Integer> increaseCount(long itemId);
+    @Query("SELECT * FROM cart_item WHERE user_id = :userId ORDER BY id")
+    Flux<CartItem> findAllSortedByUserId(Long userId);
 
     /**
      * Уменьшает количество товара в позиции корзины на оплаченное число.
      *
      * @param itemId идентификатор товара
      * @param count  оплаченное количество
+     * @param userId идентификатор пользователя
      * @return число изменённых строк
      */
     @Modifying
-    @Query("UPDATE cart_item SET count = count - :count WHERE item_id = :itemId")
-    Mono<Integer> decreaseCount(long itemId, int count);
+    @Query("UPDATE cart_item SET count = count - :count WHERE item_id = :itemId AND user_id = :userId")
+    Mono<Integer> decreaseCount(long itemId, int count, Long userId);
 
     /**
      * Удаляет позицию корзины, если её количество стало неположительным.
      *
      * @param itemId идентификатор товара
+     * @param userId идентификатор пользователя
      * @return число удалённых строк
      */
     @Modifying
-    @Query("DELETE FROM cart_item WHERE item_id = :itemId AND count <= 0")
-    Mono<Integer> deleteIfEmpty(long itemId);
+    @Query("DELETE FROM cart_item WHERE item_id = :itemId AND user_id = :userId AND count <= 0")
+    Mono<Integer> deleteIfEmpty(long itemId, Long userId);
 
     /**
-     * Удаляет позицию корзины по товару.
+     * Удаляет позицию корзины по товару и пользователю.
      *
      * @param itemId идентификатор товара
+     * @param userId идентификатор пользователя
      * @return число удалённых строк
      */
     @Modifying
-    @Query("DELETE FROM cart_item WHERE item_id = :itemId")
-    Mono<Integer> deleteByItemId(long itemId);
+    @Query("DELETE FROM cart_item WHERE item_id = :itemId AND user_id = :userId")
+    Mono<Integer> deleteByItemId(long itemId, Long userId);
 }

@@ -1,17 +1,35 @@
 package ru.yandex.practicum.mymarket.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.csrf;
+import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.mockUser;
 
 import java.net.URI;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webflux.test.autoconfigure.WebFluxTest;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
+import org.springframework.http.client.MultipartBodyBuilder;
+import org.springframework.http.codec.multipart.FilePart;
+import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
+import org.springframework.security.config.web.server.ServerHttpSecurity;
+import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.reactive.server.WebTestClient;
+import org.thymeleaf.extras.springsecurity6.dialect.SpringSecurityDialect;
 import reactor.core.publisher.Mono;
 import ru.yandex.practicum.mymarket.dto.ItemDto;
 import ru.yandex.practicum.mymarket.dto.ItemsPage;
@@ -34,6 +52,7 @@ import ru.yandex.practicum.mymarket.service.ItemService;
  * {@code formaction}.
  */
 @WebFluxTest(ItemsController.class)
+@Import(ItemsControllerTest.TestSecurityConfig.class)
 class ItemsControllerTest {
 
     @Autowired
@@ -45,15 +64,30 @@ class ItemsControllerTest {
     @MockitoBean
     private CartService cartService;
 
+    @MockitoBean
+    private ru.yandex.practicum.mymarket.security.CurrentUserProvider currentUserProvider;
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUpCurrentUser() {
+        ru.yandex.practicum.mymarket.model.User user = new ru.yandex.practicum.mymarket.model.User();
+        user.setId(1L);
+        user.setUsername("user1");
+        lenient().when(currentUserProvider.getCurrentUser()).thenReturn(Mono.just(user));
+    }
+
+    private WebTestClient authed() {
+        return client.mutateWith(mockUser("user1").roles("USER")).mutateWith(csrf());
+    }
+
     /**
      * Проверяет, что GET / отдаёт витрину с атрибутами модели из сервиса.
      */
     @Test
     void getItemsRendersItemsView() {
         ItemsPage page = new ItemsPage(List.of(), "", "NO", new Paging(5, 1, false, false));
-        when(itemService.getItems(eq(""), eq("NO"), eq(1), eq(5))).thenReturn(Mono.just(page));
+        when(itemService.getItems(any(), any(), anyInt(), anyInt(), any())).thenReturn(Mono.just(page));
 
-        client.get()
+        authed().get()
                 .uri("/")
                 .exchange()
                 .expectStatus()
@@ -73,9 +107,9 @@ class ItemsControllerTest {
     void getItemsPassesRequestParamsToService() {
         ItemDto dto = new ItemDto(1L, "Куртка", "Описание", "images/jacket.jpg", 4500L, 0);
         ItemsPage page = ItemsPage.of(List.of(dto), "куртка", "ALPHA", new Paging(5, 1, false, false));
-        when(itemService.getItems(eq("куртка"), eq("ALPHA"), eq(1), eq(5))).thenReturn(Mono.just(page));
+        when(itemService.getItems(any(), any(), anyInt(), anyInt(), any())).thenReturn(Mono.just(page));
 
-        client.get()
+        authed().get()
                 .uri(URI.create(
                         "/items?search=%D0%BA%D1%83%D1%80%D1%82%D0%BA%D0%B0&sort=ALPHA&pageNumber=1&pageSize=5"))
                 .exchange()
@@ -83,6 +117,8 @@ class ItemsControllerTest {
                 .isOk()
                 .expectBody(String.class)
                 .value(html -> assertThat(html).contains("Куртка"));
+
+        verify(itemService).getItems(eq("куртка"), eq("ALPHA"), eq(1), eq(5), any());
     }
 
     /**
@@ -91,9 +127,9 @@ class ItemsControllerTest {
      */
     @Test
     void postItemsRedirectsWithPreservedParams() {
-        when(cartService.applyAction(eq(1L), eq(Action.PLUS))).thenReturn(Mono.empty());
+        when(cartService.applyAction(anyLong(), any(Action.class), anyLong())).thenReturn(Mono.empty());
 
-        client.post()
+        authed().post()
                 .uri(URI.create("/items?id=1&action=PLUS&search=%D0%BA%D1%83%D1%80%D1%82%D0%BA%D0%B0"
                         + "&sort=ALPHA&pageNumber=2&pageSize=10"))
                 .exchange()
@@ -102,7 +138,7 @@ class ItemsControllerTest {
                 .expectHeader()
                 .location("/items?search=%D0%BA%D1%83%D1%80%D1%82%D0%BA%D0%B0&sort=ALPHA&pageNumber=2&pageSize=10");
 
-        verify(cartService).applyAction(eq(1L), eq(Action.PLUS));
+        verify(cartService).applyAction(eq(1L), eq(Action.PLUS), eq(1L));
     }
 
     /**
@@ -115,9 +151,9 @@ class ItemsControllerTest {
     @Test
     void getItemRendersItemView() {
         ItemDto dto = new ItemDto(1L, "Куртка", "Описание", "images/jacket.jpg", 4500L, 0);
-        when(itemService.getItem(eq(1L))).thenReturn(Mono.just(dto));
+        when(itemService.getItem(eq(1L), any())).thenReturn(Mono.just(dto));
 
-        client.get()
+        authed().get()
                 .uri("/items/1")
                 .exchange()
                 .expectStatus()
@@ -132,12 +168,12 @@ class ItemsControllerTest {
     @Test
     void postItemRendersItemView() {
         ItemDto dto = new ItemDto(1L, "Куртка", "Описание", "images/jacket.jpg", 4500L, 1);
-        when(cartService.applyAction(eq(1L), eq(Action.MINUS))).thenReturn(Mono.empty());
-        when(itemService.getItem(eq(1L))).thenReturn(Mono.just(dto));
+        when(cartService.applyAction(eq(1L), eq(Action.MINUS), eq(1L))).thenReturn(Mono.empty());
+        when(itemService.getItem(eq(1L), any())).thenReturn(Mono.just(dto));
 
-        client.post().uri("/items/1?action=MINUS").exchange().expectStatus().isOk();
+        authed().post().uri("/items/1?action=MINUS").exchange().expectStatus().isOk();
 
-        verify(cartService).applyAction(eq(1L), eq(Action.MINUS));
+        verify(cartService).applyAction(eq(1L), eq(Action.MINUS), eq(1L));
     }
 
     /**
@@ -145,7 +181,7 @@ class ItemsControllerTest {
      */
     @Test
     void postItemRejectsInvalidAction() {
-        client.post().uri("/items/1?action=UNKNOWN").exchange().expectStatus().isBadRequest();
+        authed().post().uri("/items/1?action=UNKNOWN").exchange().expectStatus().isBadRequest();
     }
 
     /**
@@ -153,9 +189,9 @@ class ItemsControllerTest {
      */
     @Test
     void getItemReturns404WhenNotFound() {
-        when(itemService.getItem(eq(999L))).thenReturn(Mono.error(new ItemNotFoundException(999L)));
+        when(itemService.getItem(eq(999L), any())).thenReturn(Mono.error(new ItemNotFoundException(999L)));
 
-        client.get().uri("/items/999").exchange().expectStatus().isNotFound();
+        authed().get().uri("/items/999").exchange().expectStatus().isNotFound();
     }
 
     /**
@@ -164,7 +200,7 @@ class ItemsControllerTest {
      */
     @Test
     void itemsWithInvalidActionReturns400() {
-        client.post().uri("/items?action=UNKNOWN").exchange().expectStatus().isBadRequest();
+        authed().post().uri("/items?action=UNKNOWN").exchange().expectStatus().isBadRequest();
     }
 
     /**
@@ -172,6 +208,157 @@ class ItemsControllerTest {
      */
     @Test
     void itemWithInvalidIdTypeReturns400() {
-        client.get().uri("/items/abc").exchange().expectStatus().isBadRequest();
+        authed().get().uri("/items/abc").exchange().expectStatus().isBadRequest();
+    }
+
+    /**
+     * Проверяет, что создание товара без цены возвращает форму с ошибкой,
+     * а не падает с NPE при передаче null в сервис.
+     */
+    @Test
+    void postNewItemRejectsMissingPrice() {
+        MultipartBodyBuilder builder = new MultipartBodyBuilder();
+        builder.part("image", new byte[] {1}).filename("image.jpg").contentType(MediaType.IMAGE_JPEG);
+        builder.part("title", "Куртка");
+        builder.part("description", "Теплая куртка");
+
+        authed().post()
+                .uri("/items/new")
+                .contentType(MediaType.MULTIPART_FORM_DATA)
+                .bodyValue(builder.build())
+                .exchange()
+                .expectStatus()
+                .isOk()
+                .expectBody(String.class)
+                .value(html -> assertThat(html).contains("Укажите цену товара"));
+
+        verify(itemService, never()).createItem(any(), any(), anyLong(), any());
+    }
+
+    /**
+     * Проверяет, что цена 0 отвергается валидацией формы.
+     */
+    @Test
+    void postNewItemRejectsZeroPrice() {
+        MultipartBodyBuilder builder = new MultipartBodyBuilder();
+        builder.part("image", new byte[] {1}).filename("image.jpg").contentType(MediaType.IMAGE_JPEG);
+        builder.part("title", "Куртка");
+        builder.part("description", "Теплая куртка");
+        builder.part("price", "0");
+
+        authed().post()
+                .uri("/items/new")
+                .contentType(MediaType.MULTIPART_FORM_DATA)
+                .bodyValue(builder.build())
+                .exchange()
+                .expectStatus()
+                .isOk()
+                .expectBody(String.class)
+                .value(html -> assertThat(html).contains("Цена товара должна быть больше нуля"));
+
+        verify(itemService, never()).createItem(any(), any(), anyLong(), any());
+    }
+
+    /**
+     * Проверяет, что отрицательная цена отвергается валидацией формы.
+     */
+    @Test
+    void postNewItemRejectsNegativePrice() {
+        MultipartBodyBuilder builder = new MultipartBodyBuilder();
+        builder.part("image", new byte[] {1}).filename("image.jpg").contentType(MediaType.IMAGE_JPEG);
+        builder.part("title", "Куртка");
+        builder.part("description", "Теплая куртка");
+        builder.part("price", "-1");
+
+        authed().post()
+                .uri("/items/new")
+                .contentType(MediaType.MULTIPART_FORM_DATA)
+                .bodyValue(builder.build())
+                .exchange()
+                .expectStatus()
+                .isOk()
+                .expectBody(String.class)
+                .value(html -> assertThat(html).contains("Цена товара должна быть больше нуля"));
+
+        verify(itemService, never()).createItem(any(), any(), anyLong(), any());
+    }
+
+    /**
+     * Проверяет, что пустое название (только пробелы) отвергается валидацией формы.
+     */
+    @Test
+    void postNewItemRejectsEmptyTitle() {
+        MultipartBodyBuilder builder = new MultipartBodyBuilder();
+        builder.part("image", new byte[] {1}).filename("image.jpg").contentType(MediaType.IMAGE_JPEG);
+        builder.part("title", "   ");
+        builder.part("description", "Теплая куртка");
+        builder.part("price", "100");
+
+        authed().post()
+                .uri("/items/new")
+                .contentType(MediaType.MULTIPART_FORM_DATA)
+                .bodyValue(builder.build())
+                .exchange()
+                .expectStatus()
+                .isOk()
+                .expectBody(String.class)
+                .value(html -> assertThat(html).contains("Укажите название товара"));
+
+        verify(itemService, never()).createItem(any(), any(), anyLong(), any());
+    }
+
+    /**
+     * Проверяет, что текстовые поля обрезаются до вызова сервиса,
+     * а сервис получает уже очищенные значения.
+     */
+    @Test
+    void postNewItemTrimsFieldsBeforeCreation() {
+        when(itemService.createItem(any(), any(), anyLong(), any()))
+                .thenReturn(Mono.just(new ItemDto(1L, "Куртка", "Теплая куртка", "images/jacket.jpg", 100L, 0)));
+
+        MultipartBodyBuilder builder = new MultipartBodyBuilder();
+        builder.part("image", new byte[] {1}).filename("image.jpg").contentType(MediaType.IMAGE_JPEG);
+        builder.part("title", "  Куртка  ");
+        builder.part("description", "  Теплая куртка  ");
+        builder.part("price", "100");
+
+        ArgumentCaptor<String> titleCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> descCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Long> priceCaptor = ArgumentCaptor.forClass(Long.class);
+
+        authed().post()
+                .uri("/items/new")
+                .contentType(MediaType.MULTIPART_FORM_DATA)
+                .bodyValue(builder.build())
+                .exchange()
+                .expectStatus()
+                .is3xxRedirection()
+                .expectHeader()
+                .location("/items");
+
+        verify(itemService)
+                .createItem(titleCaptor.capture(), descCaptor.capture(), priceCaptor.capture(), any(FilePart.class));
+        assertThat(titleCaptor.getValue()).isEqualTo("Куртка");
+        assertThat(descCaptor.getValue()).isEqualTo("Теплая куртка");
+        assertThat(priceCaptor.getValue()).isEqualTo(100L);
+    }
+
+    @TestConfiguration
+    @EnableWebFluxSecurity
+    static class TestSecurityConfig {
+        @Bean
+        SpringSecurityDialect springSecurityDialect() {
+            return new SpringSecurityDialect();
+        }
+
+        @Bean
+        SecurityWebFilterChain testChain() {
+            ServerHttpSecurity http = ServerHttpSecurity.http();
+            return http.csrf(
+                            csrf -> csrf.csrfTokenRepository(org.springframework.security.web.server.csrf
+                                    .CookieServerCsrfTokenRepository.withHttpOnlyFalse()))
+                    .authorizeExchange(ex -> ex.anyExchange().permitAll())
+                    .build();
+        }
     }
 }

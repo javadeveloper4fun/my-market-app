@@ -9,9 +9,12 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import reactor.core.publisher.Mono;
+import ru.yandex.practicum.mymarket.payments.AttemptConflictException;
 import ru.yandex.practicum.mymarket.payments.InsufficientFundsException;
 import ru.yandex.practicum.mymarket.payments.InvalidPaymentRequestException;
 import ru.yandex.practicum.mymarket.payments.PaymentsUnavailableException;
+import ru.yandex.practicum.mymarket.security.CurrentUserProvider;
+import ru.yandex.practicum.mymarket.service.CheckoutRetryException;
 import ru.yandex.practicum.mymarket.service.CheckoutService;
 import ru.yandex.practicum.mymarket.service.EmptyCartException;
 import ru.yandex.practicum.mymarket.service.OrderService;
@@ -19,11 +22,8 @@ import ru.yandex.practicum.mymarket.service.OrderService;
 /**
  * Заказы покупателя: список заказов, карточка заказа и оформление.
  *
- * <p>Контроллер возвращает {@link Mono} с именем шаблона Thymeleaf, а не готовую
- * страницу. Оформление заказа ({@code /buy}) делегируется {@link CheckoutService}:
- * снимок корзины с фиксацией цен, оплата вне транзакции, затем сохранение заказа
- * и корректировка купленных позиций корзины в одной транзакции. Такой порядок не
- * создаёт заказ без оплаты и не теряет товар, добавленный после снимка корзины.
+ * <p>Все операции выполняются в контексте текущего авторизованного пользователя.
+ * Оформление заказа ({@code /buy}) делегируется {@link CheckoutService}.
  */
 @Controller
 public class OrderController {
@@ -32,65 +32,61 @@ public class OrderController {
 
     private final OrderService orderService;
     private final CheckoutService checkoutService;
+    private final CurrentUserProvider currentUserProvider;
 
-    public OrderController(OrderService orderService, CheckoutService checkoutService) {
+    public OrderController(
+            OrderService orderService, CheckoutService checkoutService, CurrentUserProvider currentUserProvider) {
         this.orderService = orderService;
         this.checkoutService = checkoutService;
+        this.currentUserProvider = currentUserProvider;
     }
 
     /**
-     * Отдаёт страницу со списком заказов.
+     * Отдаёт список заказов.
      *
      * @param model модель представления
-     * @return имя шаблона списка заказов
+     * @return имя шаблона заказов
      */
     @GetMapping("/orders")
     public Mono<String> getOrders(Model model) {
-        return orderService
-                .getOrders()
-                .doOnNext(orders -> model.addAttribute("orders", orders))
+        return currentUserProvider
+                .getCurrentUser()
+                .flatMap(user ->
+                        orderService.getOrders(user.getId()).doOnNext(orders -> model.addAttribute("orders", orders)))
                 .thenReturn("orders");
     }
 
     /**
-     * Отдаёт страницу совершённого заказа.
+     * Отдаёт страницу заказа.
      *
-     * @param id       идентификатор заказа
-     * @param newOrder признак перехода с кнопки покупки
-     * @param model    модель представления
+     * @param id идентификатор заказа
+     * @param newOrder признак нового заказа
+     * @param model модель представления
      * @return имя шаблона заказа
      */
     @GetMapping("/orders/{id}")
     public Mono<String> getOrder(
             @PathVariable long id, @RequestParam(defaultValue = "false") boolean newOrder, Model model) {
-        return orderService
-                .getOrder(id)
-                .doOnNext(order -> {
+        return currentUserProvider
+                .getCurrentUser()
+                .flatMap(user -> orderService.getOrder(id, user.getId()).doOnNext(order -> {
                     model.addAttribute("order", order);
                     model.addAttribute("newOrder", newOrder);
-                })
+                }))
                 .thenReturn("order");
     }
 
     /**
-     * Оформляет заказ из корзины.
+     * Оформляет покупку.
      *
-     * <p>Покупка разделена на три шага в {@link CheckoutService}: снимок корзины,
-     * оплата вне транзакции, сохранение заказа. Контроллер только переводит
-     * ожидаемые ошибки в редирект с сообщением; неожиданные ошибки уходят в
-     * {@code GlobalExceptionHandler}.
-     *
-     * <p>Особенно важен случай {@code 402}: при недостатке средств заказ не
-     * создаётся, а корзина остаётся нетронутой. Пользователь возвращается в
-     * корзину и видит причину, а не пустую страницу с 500.
-     *
-     * @return имя шаблона заказа или редирект в корзину
+     * @param attemptId идентификатор предыдущей попытки после таймаута
+     * @return редирект на заказ или корзину
      */
     @PostMapping("/buy")
-    public Mono<String> buy() {
+    public Mono<String> buy(@RequestParam(name = "attemptId", required = false) String attemptId) {
         return checkoutService
-                .checkout()
-                .map(orderId -> "redirect:/orders/" + orderId + "?newOrder=true")
+                .checkout(attemptId)
+                .map(result -> "redirect:/orders/" + result.orderId() + "?newOrder=true")
                 .onErrorResume(EmptyCartException.class, e -> {
                     LOG.warn("Покупка отменена: корзина пуста: {}", e.getMessage());
                     return Mono.just("redirect:/cart/items");
@@ -106,6 +102,15 @@ public class OrderController {
                 .onErrorResume(PaymentsUnavailableException.class, e -> {
                     LOG.warn("Покупка отменена: сервис платежей недоступен: {}", e.getMessage());
                     return Mono.just("redirect:/cart/items?paymentError=payments-unavailable");
+                })
+                .onErrorResume(CheckoutRetryException.class, e -> {
+                    LOG.warn("Покупка прервана, попытка осталась активной: {}", e.getErrorCode());
+                    return Mono.just(
+                            "redirect:/cart/items?paymentError=" + e.getErrorCode() + "&attemptId=" + e.getAttemptId());
+                })
+                .onErrorResume(AttemptConflictException.class, e -> {
+                    LOG.warn("Покупка отменена: конфликт попытки: {}", e.getMessage());
+                    return Mono.just("redirect:/cart/items?paymentError=attempt-conflict");
                 });
     }
 }

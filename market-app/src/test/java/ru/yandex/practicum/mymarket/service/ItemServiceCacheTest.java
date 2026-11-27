@@ -69,9 +69,9 @@ class ItemServiceCacheTest {
     @Test
     void cardIsReadFromCacheAndCountFromDatabase() {
         when(itemCache.getItem(1L)).thenReturn(Mono.just(Optional.of(cachedItem())));
-        when(cartItemRepository.findByItemId(1L)).thenReturn(Mono.empty());
+        when(cartItemRepository.findByItemIdAndUserId(1L, 1L)).thenReturn(Mono.empty());
 
-        ItemDto dto = itemService.getItem(1L).block();
+        ItemDto dto = itemService.getItem(1L, 1L).block();
 
         assertThat(dto.title()).isEqualTo("Куртка");
         assertThat(dto.count()).isZero();
@@ -83,9 +83,9 @@ class ItemServiceCacheTest {
         when(itemCache.getItem(1L)).thenReturn(Mono.just(Optional.empty()));
         when(itemRepository.findById(1L)).thenReturn(Mono.just(item()));
         when(itemCache.putItem(any())).thenReturn(Mono.empty());
-        when(cartItemRepository.findByItemId(1L)).thenReturn(Mono.empty());
+        when(cartItemRepository.findByItemIdAndUserId(1L, 1L)).thenReturn(Mono.empty());
 
-        ItemDto dto = itemService.getItem(1L).block();
+        ItemDto dto = itemService.getItem(1L, 1L).block();
 
         assertThat(dto.title()).isEqualTo("Куртка");
         verify(itemCache).putItem(any(CachedItem.class));
@@ -95,9 +95,9 @@ class ItemServiceCacheTest {
     void pageIsReadFromCacheWithoutDatabaseQueries() {
         when(itemCache.getPage(any()))
                 .thenReturn(Mono.just(Optional.of(new CachedItemsPage(List.of(cachedItem()), 1L))));
-        when(cartItemRepository.findAllByItemIdIn(any())).thenReturn(Flux.empty());
+        when(cartItemRepository.findAllByItemIdInAndUserId(any(), any())).thenReturn(Flux.empty());
 
-        var page = itemService.getItems("", "NO", 1, 10).block();
+        var page = itemService.getItems("", "NO", 1, 10, 1L).block();
 
         assertThat(page.rows().getFirst())
                 .filteredOn(dto -> dto.id() != ItemDto.PLACEHOLDER_ID)
@@ -112,9 +112,9 @@ class ItemServiceCacheTest {
         when(itemRepository.findAllUnsorted(10L, 0L)).thenReturn(Flux.just(item()));
         when(itemRepository.count()).thenReturn(Mono.just(1L));
         when(itemCache.putPage(any(), any())).thenReturn(Mono.empty());
-        when(cartItemRepository.findAllByItemIdIn(any())).thenReturn(Flux.empty());
+        when(cartItemRepository.findAllByItemIdInAndUserId(any(), any())).thenReturn(Flux.empty());
 
-        var page = itemService.getItems("", "NO", 1, 10).block();
+        var page = itemService.getItems("", "NO", 1, 10, 1L).block();
 
         assertThat(page.rows().getFirst())
                 .filteredOn(dto -> dto.id() != ItemDto.PLACEHOLDER_ID)
@@ -128,9 +128,9 @@ class ItemServiceCacheTest {
         when(itemRepository.findAllByTitle(10L, 0L)).thenReturn(Flux.just(item()));
         when(itemRepository.count()).thenReturn(Mono.just(1L));
         when(itemCache.putPage(any(), any())).thenReturn(Mono.empty());
-        when(cartItemRepository.findAllByItemIdIn(any())).thenReturn(Flux.empty());
+        when(cartItemRepository.findAllByItemIdInAndUserId(any(), any())).thenReturn(Flux.empty());
 
-        var page = itemService.getItems("", "alpha", 1, 10).block();
+        var page = itemService.getItems("", "alpha", 1, 10, 1L).block();
 
         assertThat(page.sort()).isEqualTo("ALPHA");
         ArgumentCaptor<ItemsPageKey> keyCaptor = ArgumentCaptor.forClass(ItemsPageKey.class);
@@ -144,7 +144,6 @@ class ItemServiceCacheTest {
     void createItemInvalidatesPages() {
         when(itemRepository.save(any())).thenReturn(Mono.just(item()));
         when(itemCache.invalidatePages()).thenReturn(Mono.empty());
-        when(cartItemRepository.findByItemId(1L)).thenReturn(Mono.empty());
 
         itemService.saveWithImage("Куртка", "Описание", 1500, "key").block();
 

@@ -3,6 +3,7 @@ package ru.yandex.practicum.mymarket.service;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
@@ -13,7 +14,9 @@ import ru.yandex.practicum.mymarket.dto.OrderDto;
 import ru.yandex.practicum.mymarket.model.CartItem;
 import ru.yandex.practicum.mymarket.model.Item;
 import ru.yandex.practicum.mymarket.model.Order;
+import ru.yandex.practicum.mymarket.model.Order.Status;
 import ru.yandex.practicum.mymarket.model.OrderItem;
+import ru.yandex.practicum.mymarket.payments.AttemptConflictException;
 import ru.yandex.practicum.mymarket.repository.CartItemRepository;
 import ru.yandex.practicum.mymarket.repository.ItemRepository;
 import ru.yandex.practicum.mymarket.repository.OrderItemRepository;
@@ -22,7 +25,8 @@ import ru.yandex.practicum.mymarket.repository.OrderRepository;
 /**
  * Заказы покупателя и их оформление.
  *
- * <p>Страницы заказов собираются двумя запросами: идентификаторы заказов и
+ * <p>Все операции выполняются в контексте конкретного пользователя ({@code userId}).
+ * Страницы заказов собираются двумя запросами: идентификаторы заказов и
  * позиции по ним. Раньше для этого служил {@code left join fetch} с
  * {@code distinct}, где {@code distinct} маскировал размножение строки заказа по
  * числу позиций.
@@ -55,50 +59,61 @@ public class OrderService {
     }
 
     /**
-     * Возвращает все заказы.
+     * Возвращает все заказы пользователя.
      *
      * <p>Заказы сортируются по идентификатору убыванию: {@code id} автоинкрементный,
-     * поэтому свежие заказы — первыми. Сортировка задаётся в
-     * {@link OrderRepository#findAllIds()} через {@code ORDER BY id DESC}.
+     * поэтому свежие заказы — первыми.
      *
+     * @param userId идентификатор пользователя
      * @return список заказов с позициями
      */
-    public Mono<List<OrderDto>> getOrders() {
-        return orderRepository.findAllIds().collectList().flatMap(ids -> {
-            if (ids.isEmpty()) {
-                return Mono.just(List.of());
-            }
-            return orderItemRepository.findAllByOrderIdIn(ids).collectList().map(items -> toOrderDtos(ids, items));
-        });
+    public Mono<List<OrderDto>> getOrders(Long userId) {
+        return orderRepository
+                .findAllByUserIdOrderByIdDesc(userId)
+                .collectList()
+                .flatMap(orders -> {
+                    if (orders.isEmpty()) {
+                        return Mono.just(List.of());
+                    }
+                    List<Long> ids = orders.stream().map(Order::getId).toList();
+                    Map<Long, String> statuses =
+                            orders.stream().collect(Collectors.toMap(Order::getId, Order::getStatus));
+                    return orderItemRepository
+                            .findAllByOrderIdIn(ids)
+                            .collectList()
+                            .map(items -> toOrderDtos(ids, statuses, items));
+                });
     }
 
     /**
-     * Возвращает один заказ.
+     * Возвращает один заказ пользователя.
      *
-     * @param id идентификатор заказа
-     * @return заказ с позициями
+     * @param id     идентификатор заказа
+     * @param userId идентификатор пользователя
+     * @return заказ с позициями или ошибка, если заказа нет или он чужой
      */
-    public Mono<OrderDto> getOrder(long id) {
+    public Mono<OrderDto> getOrder(long id, Long userId) {
         return orderRepository
-                .findById(id)
+                .findByIdAndUserId(id, userId)
                 .switchIfEmpty(Mono.error(() -> new OrderNotFoundException(id)))
                 .flatMap(order -> orderItemRepository
                         .findAllByOrderIdIn(List.of(order.getId()))
                         .collectList()
-                        .map(items -> OrderDto.of(order.getId(), items)));
+                        .map(items -> OrderDto.of(order.getId(), items, order.getStatus())));
     }
 
     /**
-     * Готовит заказ из корзины, но не сохраняет его.
+     * Готовит заказ из корзины пользователя, но не сохраняет его.
      *
      * <p>Между подготовкой и сохранением выполняется оплата. Если бы оплата
      * вызывалась внутри транзакции, внешний HTTP-запрос удерживал бы соединение
      * с базой всё время ожидания ответа платежного сервиса.
      *
+     * @param userId идентификатор пользователя
      * @return снимок заказа с зафиксированными ценами и суммой
      */
-    public Mono<PreparedOrder> prepareOrder() {
-        return cartItemRepository.findAllSorted().collectList().flatMap(cartItems -> {
+    public Mono<PreparedOrder> prepareOrder(Long userId) {
+        return cartItemRepository.findAllSortedByUserId(userId).collectList().flatMap(cartItems -> {
             if (cartItems.isEmpty()) {
                 return Mono.error(new EmptyCartException("Cart is empty"));
             }
@@ -107,46 +122,108 @@ public class OrderService {
     }
 
     /**
-     * Сохраняет оплаченный заказ и уменьшает позиции корзины на купленное количество.
+     * Готовит повтор оплаты по уже созданному заказу.
      *
-     * <p>Создание заказа, его позиций и изменение корзины должны выполниться одной
-     * транзакцией: иначе возможна покупка без заказа или рассинхронизация количества.
+     * @param orderId   идентификатор заказа
+     * @param userId    идентификатор пользователя
+     * @param attemptId идентификатор попытки оформления
+     * @return снимок позиций заказа
+     */
+    public Mono<PreparedOrder> prepareRetryOrder(long orderId, Long userId, String attemptId) {
+        return orderRepository
+                .findByIdAndUserId(orderId, userId)
+                .switchIfEmpty(Mono.error(() -> new OrderNotFoundException(orderId)))
+                .flatMap(order -> {
+                    if (!Objects.equals(attemptId, order.getAttemptId())) {
+                        return Mono.error(new AttemptConflictException("Order belongs to another attempt"));
+                    }
+                    return orderItemRepository
+                            .findAllByOrderId(orderId)
+                            .collectList()
+                            .map(PreparedOrder::of);
+                });
+    }
+
+    /**
+     * Создаёт заказ до платежа: он остаётся в базе при отказе или таймауте.
      *
-     * <p>Заказ и позиции сохраняются отдельными вызовами, и это не стилистический
-     * выбор. R2DBC не умеет писать вложенные сущности: попытка сохранить заказ
-     * вместе с коллекцией позиций заканчивается
-     * {@code InvalidDataAccessApiUsageException: Nested entities are not supported}.
-     * Приём {@code @MappedCollection}, сохраняющий агрегат целиком, работает в
-     * Spring Data JDBC, но не здесь. Поэтому сначала вставляется строка заказа,
-     * затем позиции с уже известным {@code order_id}.
-     *
-     * <p>Позиции сохраняются последовательно через {@code concatMap}, а не
-     * параллельно: так порядок вставок совпадает с порядком корзины.
-     *
-     * @param prepared подготовленный заказ
+     * @param prepared  подготовленный заказ
+     * @param userId    идентификатор пользователя — владельца заказа
+     * @param attemptId идентификатор попытки оформления
      * @return идентификатор созданного заказа
      */
     @Transactional
-    public Mono<Long> placeOrder(PreparedOrder prepared) {
-        // Из корзины вычитается только оплаченное количество: товар, добавленный
-        // после подготовки заказа, должен остаться в корзине.
-        return saveOrderWithItems(prepared.items())
-                .flatMap(orderId -> Flux.fromIterable(prepared.items())
-                        .concatMap(item -> cartItemRepository
-                                .decreaseCount(item.getItemId(), item.getCount())
-                                .then(cartItemRepository.deleteIfEmpty(item.getItemId())))
-                        .then(Mono.just(orderId)));
+    public Mono<Long> createAwaitingOrder(PreparedOrder prepared, Long userId, String attemptId) {
+        return saveOrderWithItems(prepared.items(), userId, Status.AWAITING_PAYMENT.name(), attemptId);
+    }
+
+    /**
+     * Подтверждает оплату заказа и списывает купленное из корзины только один раз.
+     *
+     * @param orderId идентификатор заказа
+     * @param userId  идентификатор пользователя — владельца заказа
+     * @return {@code true}, если статус переведён в PAID; {@code false}, если заказ уже оплачен
+     */
+    @Transactional
+    public Mono<Boolean> finalizePaidOrder(long orderId, Long userId) {
+        return orderRepository
+                .transitionStatus(
+                        orderId,
+                        Status.PAID.name(),
+                        List.of(Status.AWAITING_PAYMENT.name(), Status.PAYMENT_TIMEOUT.name()))
+                .flatMap(updated -> {
+                    if (updated == null || updated == 0) {
+                        return Mono.just(false);
+                    }
+                    return orderItemRepository
+                            .findAllByOrderId(orderId)
+                            .collectList()
+                            .flatMap(items -> Flux.fromIterable(items)
+                                    .concatMap(item -> cartItemRepository
+                                            .decreaseCount(item.getItemId(), item.getCount(), userId)
+                                            .then(cartItemRepository.deleteIfEmpty(item.getItemId(), userId)))
+                                    .then(Mono.just(true)));
+                });
+    }
+
+    /**
+     * Отмечает ожидающий заказ как заказ с недостаточными средствами.
+     *
+     * @param orderId идентификатор заказа
+     * @return {@code true}, если статус переведён из AWAITING_PAYMENT
+     */
+    @Transactional
+    public Mono<Boolean> markInsufficientFunds(long orderId) {
+        return orderRepository
+                .transitionStatus(orderId, Status.INSUFFICIENT_FUNDS.name(), Status.AWAITING_PAYMENT.name())
+                .map(updated -> updated != null && updated > 0);
+    }
+
+    /**
+     * Отмечает ожидающий заказ как заказ с неопределённым результатом оплаты.
+     *
+     * @param orderId идентификатор заказа
+     * @return {@code true}, если статус переведён из AWAITING_PAYMENT
+     */
+    @Transactional
+    public Mono<Boolean> markPaymentTimeout(long orderId) {
+        return orderRepository
+                .transitionStatus(orderId, Status.PAYMENT_TIMEOUT.name(), Status.AWAITING_PAYMENT.name())
+                .map(updated -> updated != null && updated > 0);
     }
 
     /**
      * Сохраняет заказ и его позиции.
      *
-     * @param items позиции заказа без идентификатора заказа
+     * @param items     позиции заказа без идентификатора заказа
+     * @param userId    идентификатор пользователя — владельца заказа
+     * @param status    начальный статус заказа
+     * @param attemptId идентификатор попытки оформления или null
      * @return идентификатор созданного заказа
      */
-    private Mono<Long> saveOrderWithItems(List<OrderItem> items) {
+    private Mono<Long> saveOrderWithItems(List<OrderItem> items, Long userId, String status, String attemptId) {
         return orderRepository
-                .save(new Order())
+                .save(new Order(userId, status, attemptId))
                 .flatMap(order -> Flux.fromIterable(items)
                         .concatMap(item -> {
                             item.setOrderId(order.getId());
@@ -159,18 +236,6 @@ public class OrderService {
      * Собирает снимок позиций: товары уходят в заказ с теми же названием, ценой
      * и количеством, а не ссылкой на каталог. Идентификатор заказа пока пуст —
      * его проставит {@link #saveOrderWithItems} после вставки заказа.
-     *
-     * <p>Позиция корзины, товар которой не найден, приводит к ошибке, а не
-     * пропускается молча. Именно молчаливый пропуск был бы худшим исходом:
-     * заказ оформился бы на сумму меньше, чем показывает корзина, и покупатель
-     * обнаружил бы это уже на странице заказа, когда позицию нельзя ни вернуть,
-     * ни предъявить.
-     *
-     * <p>На практике случай недостижим: на {@code cart_item.item_id} стоит
-     * внешний ключ на каталог, и удалить товар, пока он лежит в корзине, база не
-     * даст. Проверка оставлена намеренно: она ничего не стоит в нормальном
-     * сценарии и превращает невозможное расхождение в явную ошибку вместо
-     * заказа с недобором позиций.
      *
      * @param cartItems позиции корзины
      * @return позиции заказа в том же порядке
@@ -195,14 +260,15 @@ public class OrderService {
     /**
      * Раскладывает позиции по заказам и собирает список DTO в порядке заказов.
      *
-     * @param ids   идентификаторы заказов в порядке выдачи
-     * @param items позиции заказов
+     * @param ids      идентификаторы заказов в порядке выдачи
+     * @param statuses статусы заказов по идентификаторам
+     * @param items    позиции заказов
      * @return список заказов
      */
-    private List<OrderDto> toOrderDtos(List<Long> ids, List<OrderItem> items) {
+    private List<OrderDto> toOrderDtos(List<Long> ids, Map<Long, String> statuses, List<OrderItem> items) {
         Map<Long, List<OrderItem>> byOrder = items.stream().collect(Collectors.groupingBy(OrderItem::getOrderId));
         return ids.stream()
-                .map(id -> OrderDto.of(id, byOrder.getOrDefault(id, List.of())))
+                .map(id -> OrderDto.of(id, byOrder.getOrDefault(id, List.of()), statuses.get(id)))
                 .toList();
     }
 }

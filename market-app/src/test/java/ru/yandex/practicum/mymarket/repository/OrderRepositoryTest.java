@@ -45,6 +45,8 @@ import ru.yandex.practicum.mymarket.support.DatabaseResetTest;
 @ActiveProfiles("test")
 class OrderRepositoryTest extends DatabaseResetTest {
 
+    private static final Long USER_ID = 1L;
+
     @Autowired
     private OrderRepository orderRepository;
 
@@ -59,7 +61,7 @@ class OrderRepositoryTest extends DatabaseResetTest {
      */
     @Test
     void savesOrderAndItsItemsSeparately() {
-        Order order = orderRepository.save(new Order()).block();
+        Order order = orderRepository.save(new Order(USER_ID)).block();
 
         orderItemRepository
                 .save(new OrderItem(order.getId(), 1L, "Куртка", new BigDecimal("4500.00"), 2))
@@ -83,8 +85,8 @@ class OrderRepositoryTest extends DatabaseResetTest {
      */
     @Test
     void findsItemsByOrderId() {
-        Order order = orderRepository.save(new Order()).block();
-        Order other = orderRepository.save(new Order()).block();
+        Order order = orderRepository.save(new Order(USER_ID)).block();
+        Order other = orderRepository.save(new Order(USER_ID)).block();
         orderItemRepository
                 .save(new OrderItem(order.getId(), 1L, "Куртка", new BigDecimal("4500.00"), 2))
                 .block();
@@ -109,10 +111,11 @@ class OrderRepositoryTest extends DatabaseResetTest {
      */
     @Test
     void findAllIdsReturnsSavedOrders() {
-        Order first = orderRepository.save(new Order()).block();
-        Order second = orderRepository.save(new Order()).block();
+        Order first = orderRepository.save(new Order(USER_ID)).block();
+        Order second = orderRepository.save(new Order(USER_ID)).block();
 
-        List<Long> ids = orderRepository.findAllIds().collectList().block();
+        List<Long> ids =
+                orderRepository.findAllIdsByUserId(USER_ID).collectList().block();
 
         assertThat(ids).containsExactly(second.getId(), first.getId());
     }
@@ -122,9 +125,10 @@ class OrderRepositoryTest extends DatabaseResetTest {
      */
     @Test
     void findsOrderWithoutItems() {
-        Order order = orderRepository.save(new Order()).block();
+        Order order = orderRepository.save(new Order(USER_ID)).block();
 
-        assertThat(orderRepository.findById(order.getId()).block()).isNotNull();
+        assertThat(orderRepository.findByIdAndUserId(order.getId(), USER_ID).block())
+                .isNotNull();
         assertThat(orderItemRepository
                         .findAllByOrderIdIn(List.of(order.getId()))
                         .collectList()

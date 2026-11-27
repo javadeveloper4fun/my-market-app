@@ -34,6 +34,8 @@ import ru.yandex.practicum.mymarket.support.DatabaseResetTest;
 @ActiveProfiles("test")
 class CartItemRepositoryTest extends DatabaseResetTest {
 
+    private static final Long USER_ID = 1L;
+
     @Autowired
     private CartItemRepository cartItemRepository;
 
@@ -68,7 +70,7 @@ class CartItemRepositoryTest extends DatabaseResetTest {
         saveCartItem(boots, 3);
 
         List<CartItem> found = cartItemRepository
-                .findAllByItemIdIn(List.of(jacket.getId(), boots.getId()))
+                .findAllByItemIdInAndUserId(List.of(jacket.getId(), boots.getId()), USER_ID)
                 .collectList()
                 .block();
 
@@ -86,7 +88,8 @@ class CartItemRepositoryTest extends DatabaseResetTest {
         Item item = save(item("Куртка", "4500.00"));
         saveCartItem(item, 4);
 
-        CartItem found = cartItemRepository.findByItemId(item.getId()).block();
+        CartItem found =
+                cartItemRepository.findByItemIdAndUserId(item.getId(), USER_ID).block();
 
         assertThat(found).isNotNull();
         assertThat(found.getItemId()).isEqualTo(item.getId());
@@ -102,7 +105,10 @@ class CartItemRepositoryTest extends DatabaseResetTest {
     void findByItemIdReturnsEmptyWhenAbsent() {
         Item item = save(item("Куртка", "4500.00"));
 
-        assertThat(cartItemRepository.findByItemId(item.getId()).block()).isNull();
+        assertThat(cartItemRepository
+                        .findByItemIdAndUserId(item.getId(), USER_ID)
+                        .block())
+                .isNull();
     }
 
     /**
@@ -119,9 +125,26 @@ class CartItemRepositoryTest extends DatabaseResetTest {
         Item item = save(item("Куртка", "4500.00"));
         saveCartItem(item, 1);
 
-        assertThatThrownBy(() ->
-                        cartItemRepository.save(new CartItem(item.getId(), 1)).block())
+        assertThatThrownBy(() -> cartItemRepository
+                        .save(new CartItem(item.getId(), 1, USER_ID))
+                        .block())
                 .isInstanceOf(DuplicateKeyException.class);
+    }
+
+    /**
+     * Проверяет атомарный UPSERT: повторное добавление увеличивает количество,
+     * а не создаёт новую строку.
+     */
+    @Test
+    void upsertIncreaseCountIncrementsExistingRow() {
+        Item item = save(item("Куртка", "4500.00"));
+
+        cartItemRepository.upsertIncreaseCount(item.getId(), USER_ID).block();
+        cartItemRepository.upsertIncreaseCount(item.getId(), USER_ID).block();
+
+        List<CartItem> all = cartItemRepository.findAll().collectList().block();
+        assertThat(all).hasSize(1);
+        assertThat(all.getFirst().getCount()).isEqualTo(2);
     }
 
     /**
@@ -142,7 +165,9 @@ class CartItemRepositoryTest extends DatabaseResetTest {
      * @return сохранённая позиция
      */
     private CartItem saveCartItem(Item item, int count) {
-        return cartItemRepository.save(new CartItem(item.getId(), count)).block();
+        return cartItemRepository
+                .save(new CartItem(item.getId(), count, USER_ID))
+                .block();
     }
 
     /**

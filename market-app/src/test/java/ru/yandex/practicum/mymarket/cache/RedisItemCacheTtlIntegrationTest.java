@@ -37,7 +37,7 @@ class RedisItemCacheTtlIntegrationTest extends AbstractRedisIntegrationTest {
                 .block();
         assertThat(saved).isNotNull();
 
-        itemService.getItem(saved.getId()).block();
+        itemService.getItem(saved.getId(), null).block();
 
         String key = "market:item:" + saved.getId();
         assertThat(redisTemplate.hasKey(key).block()).isTrue();
@@ -53,7 +53,7 @@ class RedisItemCacheTtlIntegrationTest extends AbstractRedisIntegrationTest {
                 .save(new Item("Куртка", "Описание", "images/test.jpg", new BigDecimal("100")))
                 .block();
 
-        itemService.getItems("", "NO", 1, 10).block();
+        itemService.getItems("", "NO", 1, 10, null).block();
 
         // Страница кешируется под версией каталога, прочитанной при запросе;
         // берём её из кеша, а не литерал 0.

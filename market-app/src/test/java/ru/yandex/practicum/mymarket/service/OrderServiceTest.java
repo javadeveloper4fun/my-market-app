@@ -38,6 +38,17 @@ import ru.yandex.practicum.mymarket.support.DatabaseResetTest;
 @ActiveProfiles("test")
 class OrderServiceTest extends DatabaseResetTest {
 
+    private static final Long USER_ID = 1L;
+
+    @org.junit.jupiter.api.BeforeEach
+    void seedUser() {
+        databaseClient
+                .sql("MERGE INTO users (id, username, password_hash, enabled, created_at) "
+                        + "KEY(id) VALUES (1, 'test', '{noop}p', true, CURRENT_TIMESTAMP)")
+                .then()
+                .block();
+    }
+
     @Autowired
     private OrderService orderService;
 
@@ -59,7 +70,7 @@ class OrderServiceTest extends DatabaseResetTest {
                 new OrderItem(null, 1L, "Тестовая куртка", new BigDecimal("1000"), 2),
                 new OrderItem(null, 2L, "Тестовый рюкзак", new BigDecimal("2000"), 1));
 
-        List<OrderDto> orders = orderService.getOrders().block();
+        List<OrderDto> orders = orderService.getOrders(1L).block();
 
         assertThat(orders).hasSize(1);
         OrderDto dto = orders.get(0);
@@ -74,7 +85,7 @@ class OrderServiceTest extends DatabaseResetTest {
         long orderId =
                 saveOrderWithItems(new OrderItem(null, item.getId(), "Тестовый товар", new BigDecimal("1500"), 3));
 
-        OrderDto dto = orderService.getOrder(orderId).block();
+        OrderDto dto = orderService.getOrder(orderId, 1L).block();
 
         assertThat(dto.id()).isEqualTo(orderId);
         assertThat(dto.items()).hasSize(1);
@@ -90,8 +101,8 @@ class OrderServiceTest extends DatabaseResetTest {
     void buyCreatesOrderFromCartAndClearsCart() {
         Item item1 = saveItem("Тестовая куртка", "Тёплая", "1000");
         Item item2 = saveItem("Тестовые кроссовки", "Удобные", "2000");
-        cartItemRepository.save(new CartItem(item1.getId(), 2)).block();
-        cartItemRepository.save(new CartItem(item2.getId(), 1)).block();
+        cartItemRepository.save(new CartItem(item1.getId(), 2, USER_ID)).block();
+        cartItemRepository.save(new CartItem(item2.getId(), 1, USER_ID)).block();
 
         long orderId = placeOrderFromCart();
 
@@ -107,17 +118,20 @@ class OrderServiceTest extends DatabaseResetTest {
     }
 
     @Test
-    void placeOrderKeepsCartQuantityAddedAfterPreparation() {
+    void finalizePaidOrderKeepsCartQuantityAddedAfterPreparation() {
         Item item = saveItem("Test item", "Desc", "1000");
-        cartItemRepository.save(new CartItem(item.getId(), 2)).block();
+        cartItemRepository.save(new CartItem(item.getId(), 2, 1L)).block();
 
-        PreparedOrder prepared = orderService.prepareOrder().block();
+        PreparedOrder prepared = orderService.prepareOrder(1L).block();
 
-        CartItem changed = cartItemRepository.findByItemId(item.getId()).block();
+        CartItem changed =
+                cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block();
         changed.setCount(3);
         cartItemRepository.save(changed).block();
 
-        long orderId = orderService.placeOrder(prepared).block();
+        long orderId =
+                orderService.createAwaitingOrder(prepared, 1L, "attempt-1").block();
+        assertThat(orderService.finalizePaidOrder(orderId, 1L).block()).isTrue();
 
         List<OrderItem> savedItems = orderItemRepository
                 .findAllByOrderIdIn(List.of(orderId))
@@ -127,7 +141,8 @@ class OrderServiceTest extends DatabaseResetTest {
             assertThat(saved.getItemId()).isEqualTo(item.getId());
             assertThat(saved.getCount()).isEqualTo(2);
         });
-        CartItem remaining = cartItemRepository.findByItemId(item.getId()).block();
+        CartItem remaining =
+                cartItemRepository.findByItemIdAndUserId(item.getId(), 1L).block();
         assertThat(remaining).isNotNull();
         assertThat(remaining.getCount()).isEqualTo(1);
     }
@@ -143,8 +158,8 @@ class OrderServiceTest extends DatabaseResetTest {
     void buyPreservesCountsFromCart() {
         Item jacket = saveItem("Тестовая куртка", "Зимняя", "1000");
         Item boots = saveItem("Тестовые ботинки", "Кожаные", "2000");
-        cartItemRepository.save(new CartItem(jacket.getId(), 3)).block();
-        cartItemRepository.save(new CartItem(boots.getId(), 1)).block();
+        cartItemRepository.save(new CartItem(jacket.getId(), 3, USER_ID)).block();
+        cartItemRepository.save(new CartItem(boots.getId(), 1, USER_ID)).block();
 
         long orderId = placeOrderFromCart();
 
@@ -159,8 +174,24 @@ class OrderServiceTest extends DatabaseResetTest {
     }
 
     @Test
+    void finalizePaidOrderAcceptsPaymentTimeout() {
+        Item item = saveItem("Товар", "Описание", "1000");
+        cartItemRepository.save(new CartItem(item.getId(), 2, USER_ID)).block();
+        PreparedOrder prepared = orderService.prepareOrder(USER_ID).block();
+
+        long orderId = orderService
+                .createAwaitingOrder(prepared, USER_ID, "attempt-timeout")
+                .block();
+        assertThat(orderService.markPaymentTimeout(orderId).block()).isTrue();
+        assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo("PAYMENT_TIMEOUT");
+        assertThat(orderService.finalizePaidOrder(orderId, USER_ID).block()).isTrue();
+        assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo("PAID");
+        assertThat(cartItemRepository.count().block()).isZero();
+    }
+
+    @Test
     void prepareOrderThrowsWhenCartEmpty() {
-        assertThatThrownBy(() -> orderService.prepareOrder().block())
+        assertThatThrownBy(() -> orderService.prepareOrder(1L).block())
                 .isInstanceOf(EmptyCartException.class)
                 .hasMessageContaining("Cart is empty");
     }
@@ -168,7 +199,7 @@ class OrderServiceTest extends DatabaseResetTest {
     @Test
     void buyPreservesSnapshotPrices() {
         Item item = saveItem("Тестовый товар", "Описание", "1500");
-        cartItemRepository.save(new CartItem(item.getId(), 2)).block();
+        cartItemRepository.save(new CartItem(item.getId(), 2, 1L)).block();
 
         long orderId = placeOrderFromCart();
 
@@ -189,7 +220,7 @@ class OrderServiceTest extends DatabaseResetTest {
     @Test
     void keepsCentsInSnapshotButTruncatesThemInDto() {
         Item item = saveItem("Тестовый товар", "Описание", "999.99");
-        cartItemRepository.save(new CartItem(item.getId(), 2)).block();
+        cartItemRepository.save(new CartItem(item.getId(), 2, 1L)).block();
 
         long orderId = placeOrderFromCart();
 
@@ -197,24 +228,27 @@ class OrderServiceTest extends DatabaseResetTest {
                 orderItemRepository.findAllByOrderIdIn(List.of(orderId)).blockFirst();
         assertThat(saved.getPrice()).isEqualByComparingTo(new BigDecimal("999.99"));
 
-        OrderDto dto = orderService.getOrder(orderId).block();
+        OrderDto dto = orderService.getOrder(orderId, 1L).block();
         assertThat(dto.totalSum()).isEqualTo(999L * 2);
         assertThat(dto.items().getFirst().price()).isEqualTo(999L);
     }
 
     @Test
     void getOrderFailsForUnknownId() {
-        assertThatThrownBy(() -> orderService.getOrder(999999L).block()).isInstanceOf(OrderNotFoundException.class);
+        assertThatThrownBy(() -> orderService.getOrder(999999L, 1L).block()).isInstanceOf(OrderNotFoundException.class);
     }
 
     /**
-     * Проходит путь «подготовка — сохранение» без вызова платежного шлюза.
+     * Проходит путь «подготовка — создание заказа — подтверждение оплаты» без вызова платежного шлюза.
      *
      * @return идентификатор созданного заказа
      */
     private long placeOrderFromCart() {
-        PreparedOrder prepared = orderService.prepareOrder().block();
-        return orderService.placeOrder(prepared).block();
+        PreparedOrder prepared = orderService.prepareOrder(1L).block();
+        long orderId =
+                orderService.createAwaitingOrder(prepared, 1L, "attempt-1").block();
+        assertThat(orderService.finalizePaidOrder(orderId, 1L).block()).isTrue();
+        return orderId;
     }
 
     /**
@@ -224,7 +258,7 @@ class OrderServiceTest extends DatabaseResetTest {
      * @return идентификатор созданного заказа
      */
     private long saveOrderWithItems(OrderItem... items) {
-        Order order = orderRepository.save(new Order()).block();
+        Order order = orderRepository.save(new Order(1L)).block();
         for (OrderItem item : items) {
             item.setOrderId(order.getId());
             orderItemRepository.save(item).block();

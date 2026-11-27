@@ -4,6 +4,12 @@ server:
 spring:
   application:
     name: payments-service
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI:http://localhost:8082/realms/market}
+          jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:http://localhost:8082/realms/market/protocol/openid-connect/certs}
 
 payments:
   initial-balance: ${PAYMENTS_INITIAL_BALANCE:10000}
