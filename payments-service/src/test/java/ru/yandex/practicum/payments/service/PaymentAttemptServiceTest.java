@@ -48,10 +48,8 @@ class PaymentAttemptServiceTest {
 
         service.pay(ATTEMPT_ID, 1L, 1500L);
 
-        assertThatThrownBy(() -> service.pay(ATTEMPT_ID, 2L, 1500L))
-                .isInstanceOf(AttemptConflictException.class);
-        assertThatThrownBy(() -> service.pay(ATTEMPT_ID, 1L, 2000L))
-                .isInstanceOf(AttemptConflictException.class);
+        assertThatThrownBy(() -> service.pay(ATTEMPT_ID, 2L, 1500L)).isInstanceOf(AttemptConflictException.class);
+        assertThatThrownBy(() -> service.pay(ATTEMPT_ID, 1L, 2000L)).isInstanceOf(AttemptConflictException.class);
     }
 
     @Test
@@ -97,8 +95,7 @@ class PaymentAttemptServiceTest {
     void invalidAmountDoesNotConsumeAttemptId() {
         PaymentAttemptService service = new PaymentAttemptService(new BalanceAccount(new PaymentsProperties(10_000L)));
 
-        assertThatThrownBy(() -> service.pay(ATTEMPT_ID, 1L, 0))
-                .isInstanceOf(InvalidAmountException.class);
+        assertThatThrownBy(() -> service.pay(ATTEMPT_ID, 1L, 0)).isInstanceOf(InvalidAmountException.class);
         // Попытка не занята — повтор с той же суммой должен пройти
         AttemptRecord record = service.pay(ATTEMPT_ID, 1L, 1500L);
         assertThat(record.status()).isEqualTo(AttemptRecord.Status.PAID);

@@ -131,7 +131,6 @@ class CartItemRepositoryTest extends DatabaseResetTest {
                 .isInstanceOf(DuplicateKeyException.class);
     }
 
-
     /**
      * Проверяет атомарный UPSERT: повторное добавление увеличивает количество,
      * а не создаёт новую строку.

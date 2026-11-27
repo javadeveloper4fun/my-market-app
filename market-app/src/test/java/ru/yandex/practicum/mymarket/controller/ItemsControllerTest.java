@@ -107,8 +107,7 @@ class ItemsControllerTest {
     void getItemsPassesRequestParamsToService() {
         ItemDto dto = new ItemDto(1L, "Куртка", "Описание", "images/jacket.jpg", 4500L, 0);
         ItemsPage page = ItemsPage.of(List.of(dto), "куртка", "ALPHA", new Paging(5, 1, false, false));
-        when(itemService.getItems(any(), any(), anyInt(), anyInt(), any()))
-                .thenReturn(Mono.just(page));
+        when(itemService.getItems(any(), any(), anyInt(), anyInt(), any())).thenReturn(Mono.just(page));
 
         authed().get()
                 .uri(URI.create(

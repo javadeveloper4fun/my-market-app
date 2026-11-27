@@ -37,10 +37,9 @@ public class PaymentAttemptService {
                 if (existing.userId() == userId && existing.amount() == amount) {
                     return existing; // идемпотентный повтор — сохранённый результат
                 }
-                throw new AttemptConflictException(
-                        "Attempt " + attemptId + " already used by user " + existing.userId()
-                                + " with amount " + existing.amount()
-                                + ", requested user=" + userId + " amount=" + amount);
+                throw new AttemptConflictException("Attempt " + attemptId + " already used by user " + existing.userId()
+                        + " with amount " + existing.amount()
+                        + ", requested user=" + userId + " amount=" + amount);
             }
             // Новая попытка — списываем ровно один раз
             long remaining;
@@ -48,13 +47,18 @@ public class PaymentAttemptService {
                 remaining = account.withdraw(userId, amount);
                 return new AttemptRecord(userId, amount, AttemptRecord.Status.PAID, remaining);
             } catch (InsufficientFundsException e) {
-                return new AttemptRecord(userId, amount, AttemptRecord.Status.INSUFFICIENT_FUNDS,
-                        e.getCurrentBalance());
+                return new AttemptRecord(
+                        userId, amount, AttemptRecord.Status.INSUFFICIENT_FUNDS, e.getCurrentBalance());
             }
         });
     }
 
-    /** Возвращает текущий баланс пользователя (для проверок в тестах). */
+    /**
+     * Возвращает текущий баланс пользователя (для проверок в тестах).
+     *
+     * @param userId идентификатор пользователя витрины
+     * @return текущий баланс пользователя
+     */
     public long accountBalance(long userId) {
         return account.getBalance(userId);
     }

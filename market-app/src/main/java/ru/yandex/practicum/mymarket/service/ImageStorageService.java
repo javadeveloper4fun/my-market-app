@@ -289,8 +289,7 @@ public class ImageStorageService {
     }
 
     private ImageUploadException tooLarge(long limit) {
-        return new ImageUploadException(
-                "Изображение слишком большое. Максимальный размер — " + formatSize(limit));
+        return new ImageUploadException("Изображение слишком большое. Максимальный размер — " + formatSize(limit));
     }
 
     private String formatSize(long bytes) {
@@ -326,7 +325,8 @@ public class ImageStorageService {
             return 1024L * 1024L;
         }
         String trimmed = size.trim().toUpperCase(Locale.ROOT);
-        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("^(\\d+)\\s*(KB|MB|GB)$").matcher(trimmed);
+        java.util.regex.Matcher matcher =
+                java.util.regex.Pattern.compile("^(\\d+)\\s*(KB|MB|GB)$").matcher(trimmed);
         if (!matcher.matches()) {
             throw new IllegalArgumentException("Неподдерживаемый формат размера: '" + size
                     + "'. Ожидается целое число с суффиксом (например, 5MB, 10KB, 2GB).");
@@ -337,8 +337,9 @@ public class ImageStorageService {
                     case "KB" -> 1024L;
                     case "MB" -> 1024L * 1024L;
                     case "GB" -> 1024L * 1024L * 1024L;
-                    default -> throw new IllegalArgumentException(
-                            "Неподдерживаемый суффикс размера: '" + size + "'. Ожидается KB, MB или GB.");
+                    default ->
+                        throw new IllegalArgumentException(
+                                "Неподдерживаемый суффикс размера: '" + size + "'. Ожидается KB, MB или GB.");
                 };
         return value * multiplier;
     }

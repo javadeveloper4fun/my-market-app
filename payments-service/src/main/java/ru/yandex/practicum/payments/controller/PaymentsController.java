@@ -48,7 +48,7 @@ public class PaymentsController implements BalanceApi, PaymentsApi {
             return switch (record.status()) {
                 case PAID -> Mono.just(ResponseEntity.ok(new PaymentResponse(amount, record.remainingBalance())));
                 case INSUFFICIENT_FUNDS ->
-                        Mono.error(new InsufficientFundsException(amount, record.remainingBalance()));
+                    Mono.error(new InsufficientFundsException(amount, record.remainingBalance()));
             };
         });
     }

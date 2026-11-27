@@ -12,7 +12,9 @@ package ru.yandex.practicum.payments.service;
 public record AttemptRecord(long userId, long amount, Status status, long remainingBalance) {
 
     public enum Status {
+        /** Оплата выполнена. */
         PAID,
+        /** Недостаточно средств для оплаты. */
         INSUFFICIENT_FUNDS
     }
 }
