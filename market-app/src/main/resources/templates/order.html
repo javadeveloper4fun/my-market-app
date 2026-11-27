@@ -47,6 +47,7 @@
                 <span th:case="'PAID'" class="badge text-bg-success">Оплачен</span>
                 <span th:case="'AWAITING_PAYMENT'" class="badge text-bg-warning">Ожидает оплаты</span>
                 <span th:case="'INSUFFICIENT_FUNDS'" class="badge text-bg-danger">Недостаточно средств</span>
+                <span th:case="'PAYMENT_TIMEOUT'" class="badge text-bg-warning">Ожидает подтверждения оплаты</span>
                 <span th:case="*" class="badge text-bg-secondary" th:text="${order.status()}"></span>
             </span>
         </div>

@@ -48,6 +48,7 @@ class GeneratedPaymentsGatewayTest {
         RecordedRequest request = server.takeRequest();
         assertThat(request.getPath()).isEqualTo("/api/v1/payments");
         assertThat(request.getHeader("X-User-Id")).isEqualTo("1");
+        assertThat(request.getHeader("X-Attempt-Id")).isEqualTo("attempt-1");
         assertThat(request.getBody().readUtf8()).contains("\"amount\":1500");
     }
 

@@ -1,5 +1,6 @@
 package ru.yandex.practicum.mymarket.support;
 
+import java.time.Duration;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -26,6 +27,7 @@ public class StubPaymentsConfiguration {
         private final ConcurrentMap<String, PaymentResult> results = new ConcurrentHashMap<>();
         private volatile long initialBalanceForAll = 1_000_000L;
         private volatile boolean unavailable;
+        private volatile Duration paymentDelay = Duration.ZERO;
 
         public void setBalance(long value) {
             initialBalanceForAll = value;
@@ -36,6 +38,10 @@ public class StubPaymentsConfiguration {
 
         public void setUnavailable(boolean value) {
             unavailable = value;
+        }
+
+        public void setPaymentDelay(Duration value) {
+            paymentDelay = value;
         }
 
         @Override
@@ -51,7 +57,7 @@ public class StubPaymentsConfiguration {
             if (unavailable) {
                 return Mono.error(new PaymentsUnavailableException("stub unavailable"));
             }
-            return Mono.fromCallable(() -> {
+            Mono<PaymentResult> paymentResult = Mono.fromCallable(() -> {
                 // Идемпотентность: тот же attemptId возвращает сохранённый результат
                 PaymentResult existing = results.get(attemptId);
                 if (existing != null) {
@@ -80,6 +86,7 @@ public class StubPaymentsConfiguration {
                 }
                 return result;
             });
+            return paymentDelay.isZero() ? paymentResult : paymentResult.delaySubscription(paymentDelay);
         }
 
         private AtomicLong balanceFor(long userId) {

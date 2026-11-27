@@ -204,6 +204,7 @@ class CheckoutServiceTest {
         when(checkoutAttemptRepository.attachOrderIfNull(anyLong(), anyLong())).thenReturn(Mono.just(1));
         when(paymentsGateway.pay(eq(1L), eq(2000L), anyString()))
                 .thenReturn(Mono.error(new PaymentsUnavailableException("connection refused")));
+        when(orderService.markPaymentTimeout(42L)).thenReturn(Mono.just(true));
         stubTransition(1);
 
         assertThatThrownBy(() -> checkoutService.checkout(null).block())
@@ -212,6 +213,44 @@ class CheckoutServiceTest {
                     assertThat(error.getAttemptId()).isNotBlank();
                 });
 
+        verify(orderService).markPaymentTimeout(42L);
+        verify(checkoutAttemptRepository)
+                .transitionStatus(
+                        eq(1L),
+                        eq(CheckoutAttempt.Status.PAYMENT_TIMEOUT.name()),
+                        eq(1L),
+                        nullable(Long.class),
+                        nullable(Long.class),
+                        nullable(Long.class),
+                        eq(CheckoutAttempt.Status.AWAITING_PAYMENT.name()));
+    }
+
+    @Test
+    void keepsAttemptActiveWhenOrderTimeoutMarkFails() {
+        User user = user(1L);
+        PreparedOrder prepared = preparedOrder();
+        stubCurrentUser(user);
+        when(orderService.prepareOrder(1L)).thenReturn(Mono.just(prepared));
+        when(checkoutAttemptRepository.save(any(CheckoutAttempt.class))).thenAnswer(invocation -> {
+            CheckoutAttempt attempt = invocation.getArgument(0);
+            attempt.setId(1L);
+            return Mono.just(attempt);
+        });
+        when(orderService.createAwaitingOrder(eq(prepared), eq(1L), anyString()))
+                .thenReturn(Mono.just(42L));
+        when(checkoutAttemptRepository.attachOrderIfNull(anyLong(), anyLong())).thenReturn(Mono.just(1));
+        when(paymentsGateway.pay(eq(1L), eq(2000L), anyString()))
+                .thenReturn(Mono.error(new PaymentsUnavailableException("connection refused")));
+        when(orderService.markPaymentTimeout(42L)).thenReturn(Mono.error(new IllegalStateException("db down")));
+        stubTransition(1);
+
+        assertThatThrownBy(() -> checkoutService.checkout(null).block())
+                .isInstanceOfSatisfying(CheckoutRetryException.class, error -> {
+                    assertThat(error.getErrorCode()).isEqualTo("payments-unavailable");
+                    assertThat(error.getAttemptId()).isNotBlank();
+                });
+
+        verify(orderService).markPaymentTimeout(42L);
         verify(checkoutAttemptRepository)
                 .transitionStatus(
                         eq(1L),

@@ -178,9 +178,29 @@ public class CheckoutService {
                                 .then(Mono.error(error)))
                 .onErrorResume(
                         PaymentsUnavailableException.class,
-                        error -> transition(attempt, CheckoutAttempt.Status.PAYMENT_TIMEOUT.name(), user.getId(), null)
+                        error -> markTimeoutOrderAndAttempt(orderId, attempt)
                                 .then(Mono.error(new CheckoutRetryException(
                                         attempt.getAttemptId(), "payments-unavailable", error))));
+    }
+
+    private Mono<Void> markTimeoutOrderAndAttempt(long orderId, CheckoutAttempt attempt) {
+        return orderService
+                .markPaymentTimeout(orderId)
+                .doOnNext(updated -> {
+                    if (!Boolean.TRUE.equals(updated)) {
+                        LOG.warn("Order already finalized or not awaiting orderId={}", orderId);
+                    }
+                })
+                .onErrorResume(error -> {
+                    LOG.error(
+                            "CHECKOUT_TIMEOUT_MARK_FAILED orderId={} attemptId={}",
+                            orderId,
+                            attempt.getAttemptId(),
+                            error);
+                    return Mono.just(false);
+                })
+                .then(transition(attempt, CheckoutAttempt.Status.PAYMENT_TIMEOUT.name(), attempt.getUserId(), null))
+                .then();
     }
 
     private Mono<Void> failOrderAndAttempt(long orderId, CheckoutAttempt attempt, String status) {

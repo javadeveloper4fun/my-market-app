@@ -122,6 +122,9 @@ class WebFluxFlowIntegrationTest extends DatabaseResetTest {
                 .expectHeader()
                 .value("Location", l -> assertThat(l).contains("/orders/").endsWith("?newOrder=true"));
 
+        assertThat(orderRepository.findAll().collectList().block().getFirst().getStatus())
+                .isEqualTo("PAID");
+
         authed().get()
                 .uri("/orders")
                 .exchange()
@@ -196,7 +199,7 @@ class WebFluxFlowIntegrationTest extends DatabaseResetTest {
 
         assertThat(orderRepository.count().block()).isEqualTo(1);
         assertThat(orderRepository.findAll().collectList().block().getFirst().getStatus())
-                .isEqualTo("AWAITING_PAYMENT");
+                .isEqualTo("PAYMENT_TIMEOUT");
         assertThat(cartItemRepository.count().block()).isEqualTo(1);
     }
 

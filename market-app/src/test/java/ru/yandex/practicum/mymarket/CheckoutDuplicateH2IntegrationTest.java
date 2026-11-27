@@ -6,6 +6,7 @@ import static org.springframework.security.test.web.reactive.server.SecurityMock
 import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.springSecurity;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -86,6 +87,7 @@ class CheckoutDuplicateH2IntegrationTest extends DatabaseResetTest {
                 .build();
         payments.setBalance(INITIAL_BALANCE);
         payments.setUnavailable(false);
+        payments.setPaymentDelay(Duration.ZERO);
         databaseClient
                 .sql("INSERT INTO users (username, password_hash, enabled, created_at) "
                         + "VALUES ('user1','{noop}password',true,CURRENT_TIMESTAMP)")
@@ -146,8 +148,55 @@ class CheckoutDuplicateH2IntegrationTest extends DatabaseResetTest {
                 checkoutAttemptRepository.findByAttemptId(attemptId).block();
         assertThat(attempt).isNotNull();
         assertThat(attempt.getStatus()).isEqualTo(CheckoutAttempt.Status.PAID.name());
+        assertThat(orderRepository.findAll().collectList().block().getFirst().getStatus())
+                .isEqualTo("PAID");
         assertThat(cartItemRepository.count().block()).isZero();
         assertThat(payments.getBalance(user.getId()).block()).isEqualTo(INITIAL_BALANCE - PRICE);
+    }
+
+    @Test
+    void twoConcurrentInitialClicksWithoutAttemptIdCreateSingleOrderAndSinglePayment() throws Exception {
+        payments.setPaymentDelay(Duration.ofMillis(500));
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            Future<String> first = executor.submit(() -> buyWithoutAttemptId(ready, start));
+            Future<String> second = executor.submit(() -> buyWithoutAttemptId(ready, start));
+
+            assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            List<String> locations = List.of(first.get(30, TimeUnit.SECONDS), second.get(30, TimeUnit.SECONDS));
+
+            assertThat(locations)
+                    .filteredOn(location -> location.contains("/orders/"))
+                    .hasSize(1);
+            assertThat(locations)
+                    .filteredOn(location -> location.contains("paymentError=attempt-conflict"))
+                    .hasSize(1);
+        }
+
+        assertThat(orderRepository.count().block()).isEqualTo(1L);
+        assertThat(checkoutAttemptRepository.count().block()).isEqualTo(1L);
+        assertThat(orderRepository.findAll().collectList().block().getFirst().getStatus())
+                .isEqualTo("PAID");
+        assertThat(cartItemRepository.count().block()).isZero();
+        assertThat(payments.getBalance(user.getId()).block()).isEqualTo(INITIAL_BALANCE - PRICE);
+    }
+
+    private String buyWithoutAttemptId(CountDownLatch ready, CountDownLatch start) throws Exception {
+        ready.countDown();
+        if (!start.await(10, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Concurrent start was not released");
+        }
+        return authed().post()
+                .uri("/buy")
+                .exchange()
+                .expectStatus()
+                .is3xxRedirection()
+                .returnResult(String.class)
+                .getResponseHeaders()
+                .getLocation()
+                .toString();
     }
 
     private WebTestClient authed() {

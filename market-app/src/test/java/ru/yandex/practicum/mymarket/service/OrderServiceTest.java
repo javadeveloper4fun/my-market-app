@@ -118,7 +118,7 @@ class OrderServiceTest extends DatabaseResetTest {
     }
 
     @Test
-    void placeOrderKeepsCartQuantityAddedAfterPreparation() {
+    void finalizePaidOrderKeepsCartQuantityAddedAfterPreparation() {
         Item item = saveItem("Test item", "Desc", "1000");
         cartItemRepository.save(new CartItem(item.getId(), 2, 1L)).block();
 
@@ -129,7 +129,9 @@ class OrderServiceTest extends DatabaseResetTest {
         changed.setCount(3);
         cartItemRepository.save(changed).block();
 
-        long orderId = orderService.placeOrder(prepared, 1L).block();
+        long orderId =
+                orderService.createAwaitingOrder(prepared, 1L, "attempt-1").block();
+        assertThat(orderService.finalizePaidOrder(orderId, 1L).block()).isTrue();
 
         List<OrderItem> savedItems = orderItemRepository
                 .findAllByOrderIdIn(List.of(orderId))
@@ -169,6 +171,22 @@ class OrderServiceTest extends DatabaseResetTest {
                 .singleElement()
                 .extracting(OrderItem::getCount)
                 .isEqualTo(3);
+    }
+
+    @Test
+    void finalizePaidOrderAcceptsPaymentTimeout() {
+        Item item = saveItem("Товар", "Описание", "1000");
+        cartItemRepository.save(new CartItem(item.getId(), 2, USER_ID)).block();
+        PreparedOrder prepared = orderService.prepareOrder(USER_ID).block();
+
+        long orderId = orderService
+                .createAwaitingOrder(prepared, USER_ID, "attempt-timeout")
+                .block();
+        assertThat(orderService.markPaymentTimeout(orderId).block()).isTrue();
+        assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo("PAYMENT_TIMEOUT");
+        assertThat(orderService.finalizePaidOrder(orderId, USER_ID).block()).isTrue();
+        assertThat(orderRepository.findById(orderId).block().getStatus()).isEqualTo("PAID");
+        assertThat(cartItemRepository.count().block()).isZero();
     }
 
     @Test
@@ -221,13 +239,16 @@ class OrderServiceTest extends DatabaseResetTest {
     }
 
     /**
-     * Проходит путь «подготовка — сохранение» без вызова платежного шлюза.
+     * Проходит путь «подготовка — создание заказа — подтверждение оплаты» без вызова платежного шлюза.
      *
      * @return идентификатор созданного заказа
      */
     private long placeOrderFromCart() {
         PreparedOrder prepared = orderService.prepareOrder(1L).block();
-        return orderService.placeOrder(prepared, 1L).block();
+        long orderId =
+                orderService.createAwaitingOrder(prepared, 1L, "attempt-1").block();
+        assertThat(orderService.finalizePaidOrder(orderId, 1L).block()).isTrue();
+        return orderId;
     }
 
     /**

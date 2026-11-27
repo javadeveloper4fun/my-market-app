@@ -1,5 +1,6 @@
 package ru.yandex.practicum.mymarket.repository;
 
+import java.util.Collection;
 import org.springframework.data.r2dbc.repository.Modifying;
 import org.springframework.data.r2dbc.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -64,4 +65,19 @@ public interface OrderRepository extends ReactiveCrudRepository<Order, Long> {
     @Query("UPDATE orders SET status = :newStatus WHERE id = :id AND status = :expectedStatus")
     Mono<Integer> transitionStatus(
             @Param("id") Long id, @Param("newStatus") String newStatus, @Param("expectedStatus") String expectedStatus);
+
+    /**
+     * Меняет статус заказа, если текущий статус входит в переданный список.
+     *
+     * @param id              идентификатор заказа
+     * @param newStatus       новый статус
+     * @param expectedStatuses допустимые текущие статусы
+     * @return число обновлённых строк
+     */
+    @Modifying
+    @Query("UPDATE orders SET status = :newStatus WHERE id = :id AND status IN (:expectedStatuses)")
+    Mono<Integer> transitionStatus(
+            @Param("id") Long id,
+            @Param("newStatus") String newStatus,
+            @Param("expectedStatuses") Collection<String> expectedStatuses);
 }

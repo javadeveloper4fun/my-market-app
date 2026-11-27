@@ -167,7 +167,10 @@ public class OrderService {
     @Transactional
     public Mono<Boolean> finalizePaidOrder(long orderId, Long userId) {
         return orderRepository
-                .transitionStatus(orderId, Status.PAID.name(), Status.AWAITING_PAYMENT.name())
+                .transitionStatus(
+                        orderId,
+                        Status.PAID.name(),
+                        List.of(Status.AWAITING_PAYMENT.name(), Status.PAYMENT_TIMEOUT.name()))
                 .flatMap(updated -> {
                     if (updated == null || updated == 0) {
                         return Mono.just(false);
@@ -197,25 +200,16 @@ public class OrderService {
     }
 
     /**
-     * Сохраняет оплаченный заказ и уменьшает позиции корзины на купленное количество.
+     * Отмечает ожидающий заказ как заказ с неопределённым результатом оплаты.
      *
-     * <p>Создание заказа, его позиций и изменение корзины должны выполниться одной
-     * транзакцией: иначе возможна покупка без заказа или рассинхронизация количества.
-     *
-     * @param prepared подготовленный заказ
-     * @param userId   идентификатор пользователя — владельца заказа
-     * @return идентификатор созданного заказа
+     * @param orderId идентификатор заказа
+     * @return {@code true}, если статус переведён из AWAITING_PAYMENT
      */
     @Transactional
-    public Mono<Long> placeOrder(PreparedOrder prepared, Long userId) {
-        // Из корзины вычитается только оплаченное количество: товар, добавленный
-        // после подготовки заказа, должен остаться в корзине.
-        return saveOrderWithItems(prepared.items(), userId, Status.PAID.name(), null)
-                .flatMap(orderId -> Flux.fromIterable(prepared.items())
-                        .concatMap(item -> cartItemRepository
-                                .decreaseCount(item.getItemId(), item.getCount(), userId)
-                                .then(cartItemRepository.deleteIfEmpty(item.getItemId(), userId)))
-                        .then(Mono.just(orderId)));
+    public Mono<Boolean> markPaymentTimeout(long orderId) {
+        return orderRepository
+                .transitionStatus(orderId, Status.PAYMENT_TIMEOUT.name(), Status.AWAITING_PAYMENT.name())
+                .map(updated -> updated != null && updated > 0);
     }
 
     /**
