@@ -17,7 +17,7 @@
 - `payments-service`: Spring Security OAuth2 Resource Server, проверка JWT, `/actuator/**` открыт для healthcheck.
 - CSRF включён для web-форм; в шаблонах Thymeleaf используется hidden `_csrf`.
 
-Демо-пользователи (seed миграция market-app): `user1/password`, `user2/password`.
+Демо-пользователи для входа в market-app (создаются seed-миграцией в БД, не в Keycloak): `user1/password`, `user2/password`.
 
 ## Запуск
 
@@ -91,7 +91,7 @@ docker compose -f docker-compose.yml -f docker-compose.prebuilt.yml up -d --buil
 ## Примечания и упрощения
 
 - Баланс и история попыток `payments-service` хранятся в памяти (`ConcurrentHashMap`) — учебное упрощение. Перезапуск `payments-service` возвращает баланс к `10000` и очищает историю `attemptId`: `docker compose restart payments-service`.
-- Оформление в `market-app` защищено от двойного списания: попытка фиксируется в `checkout_attempts`, заказ создаётся до оплаты в статусе `AWAITING_PAYMENT`, повтор после таймаута или недоступности платежей использует тот же `attemptId`. При отказе по insufficient funds заказ и попытка переводятся в `INSUFFICIENT_FUNDS`.
+- Оформление в `market-app` защищено от двойного списания: попытка фиксируется в `checkout_attempts`, заказ создаётся до оплаты в статусе `AWAITING_PAYMENT`, при недоступности платежей заказ переводится в `PAYMENT_TIMEOUT`; повтор с тем же `attemptId` может перевести его в `PAID` без повторного списания. При отказе по insufficient funds заказ и попытка переводятся в `INSUFFICIENT_FUNDS`.
 - `payments-service` проверяет JWT как OAuth2 Resource Server realm Keycloak, но не ограничивает вызовы только клиентом `market-app`: любой валидный JWT realm принимается. Для production нужно ограничивать `azp`/`client_id` или отдельный audience/scope.
 - `X-User-Id` — доверенный заголовок, который выставляет `market-app`; payments-service не сверяет его с `sub`/claim JWT. Клиент с валидным JWT realm может подменить заголовок — для production нужен маппинг пользователя из токена.
 - Redis используется как cache-aside для каталога; количество товара в корзине всегда читается из БД.
